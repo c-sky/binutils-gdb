@@ -130,7 +130,7 @@ set x86_64tests {
      {{objdump -dwr tlsgd5.dd}} "tlsgd5a"}
     {"TLS GD->IE transition without PLT"
      "-melf_x86_64 tmpdir/libtlsgd5.so" ""
-     "--64" {tlsgd5c.s}
+     "-mrelax-relocations=yes --64" {tlsgd5c.s}
      {{objdump -dwr tlsgd5.dd}} "tlsgd5b"}
     {"Helper TLS X32 GD->IE transition DSO" "-shared -melf32_x86_64" ""
      "--x32" {tlsgd6b.s} {} "libtlsgd6.so"}
@@ -139,7 +139,7 @@ set x86_64tests {
      {{objdump -dwr tlsgd6.dd}} "tlsgd6a"}
     {"TLS X32 GD->IE transition without PLT"
      "-melf32_x86_64 tmpdir/libtlsgd6.so" ""
-     "--x32" {tlsgd6c.s}
+     "-mrelax-relocations=yes --x32" {tlsgd6c.s}
      {{objdump -dwr tlsgd6.dd}} "tlsgd6b"}
     {"TLS X32 LD->LE transition" "-melf32_x86_64" ""
      "--x32" {tlsld2.s}
