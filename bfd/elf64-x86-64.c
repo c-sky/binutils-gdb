@@ -1301,7 +1301,7 @@ elf_x86_64_check_tls_transition (bfd *abfd,
 	{
 	  /* Check transition from GD access model.  For 64bit, only
 		.byte 0x66; leaq foo@tlsgd(%rip), %rdi
-		.word 0x6666; rex64; call __tls_get_addr
+		.word 0x6666; rex64; call __tls_get_addr@PLT
 	     or
 		.byte 0x66; leaq foo@tlsgd(%rip), %rdi
 		.byte 0x66; rex64
@@ -1310,7 +1310,7 @@ elf_x86_64_check_tls_transition (bfd *abfd,
 		addr32 call __tls_get_addr
 	     can transit to different access model.  For 32bit, only
 		leaq foo@tlsgd(%rip), %rdi
-		.word 0x6666; rex64; call __tls_get_addr
+		.word 0x6666; rex64; call __tls_get_addr@PLT
 	     or
 		leaq foo@tlsgd(%rip), %rdi
 		.byte 0x66; rex64
@@ -1377,7 +1377,7 @@ elf_x86_64_check_tls_transition (bfd *abfd,
 	{
 	  /* Check transition from LD access model.  Only
 		leaq foo@tlsld(%rip), %rdi;
-		call __tls_get_addr
+		call __tls_get_addr@PLT
              or
 		leaq foo@tlsld(%rip), %rdi;
 		call *__tls_get_addr@GOTPCREL(%rip)
@@ -1456,7 +1456,7 @@ elf_x86_64_check_tls_transition (bfd *abfd,
 	return ELF32_R_TYPE (rel[1].r_info) == R_X86_64_GOTPCRELX;
       else
 	return (ELF32_R_TYPE (rel[1].r_info) == R_X86_64_PC32
-		|| (ELF32_R_TYPE (rel[1].r_info) == R_X86_64_PLT32));
+		|| ELF32_R_TYPE (rel[1].r_info) == R_X86_64_PLT32);
 
     case R_X86_64_GOTTPOFF:
       /* Check transition from IE access model:
@@ -4950,7 +4950,7 @@ direct:
 		{
 		  /* GD->LE transition.  For 64bit, change
 			.byte 0x66; leaq foo@tlsgd(%rip), %rdi
-			.word 0x6666; rex64; call __tls_get_addr
+			.word 0x6666; rex64; call __tls_get_addr@PLT
 		     or
 			.byte 0x66; leaq foo@tlsgd(%rip), %rdi
 			.byte 0x66; rex64
@@ -4962,7 +4962,7 @@ direct:
 			leaq foo@tpoff(%rax), %rax
 		     For 32bit, change
 			leaq foo@tlsgd(%rip), %rdi
-			.word 0x6666; rex64; call __tls_get_addr
+			.word 0x6666; rex64; call __tls_get_addr@PLT
 		     or
 			leaq foo@tlsgd(%rip), %rdi
 			.byte 0x66; rex64
@@ -5241,7 +5241,7 @@ direct:
 		{
 		  /* GD->IE transition.  For 64bit, change
 			.byte 0x66; leaq foo@tlsgd(%rip), %rdi
-			.word 0x6666; rex64; call __tls_get_addr@plt
+			.word 0x6666; rex64; call __tls_get_addr@PLT
 		     or
 			.byte 0x66; leaq foo@tlsgd(%rip), %rdi
 			.byte 0x66; rex64
@@ -5253,7 +5253,7 @@ direct:
 			addq foo@gottpoff(%rip), %rax
 		     For 32bit, change
 			leaq foo@tlsgd(%rip), %rdi
-			.word 0x6666; rex64; call __tls_get_addr@plt
+			.word 0x6666; rex64; call __tls_get_addr@PLT
 		     or
 			leaq foo@tlsgd(%rip), %rdi
 			.byte 0x66; rex64;
@@ -5360,7 +5360,8 @@ direct:
 	  if (r_type != R_X86_64_TLSLD)
 	    {
 	      /* LD->LE transition:
-			leaq foo@tlsld(%rip), %rdi; call __tls_get_addr
+			leaq foo@tlsld(%rip), %rdi
+			call __tls_get_addr@PLT
 		 For 64bit, we change it into:
 			.word 0x6666; .byte 0x66; movq %fs:0, %rax
 		 For 32bit, we change it into:
