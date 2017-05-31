@@ -7845,6 +7845,16 @@ name of @file{/build/trunk/gcc/expr.c}, but not
 Specifies the line that begins the body of the function @var{function}.
 For example, in C, this is the line with the open brace.
 
+For C@t{++}, @var{function} is interpreted as specifying all functions
+named @var{function} ignoring missing leading specifiers (namespaces
+and classes).
+
+For example, assuming a program with symbols named @code{A::B::func}
+and @code{B::func}, both commands @code{break func} and @code{break
+B::func} set a breakpoint on both symbols.  To override this, you can
+use the explicit location option @code{-qualified}.  @xref{Explicit
+Locations}.
+
 @item @var{function}:@var{label}
 Specifies the line where @var{label} appears in @var{function}.
 
@@ -7908,6 +7918,22 @@ The value specifies the name of a function.  Operations
 on function locations unmodified by other options (such as @code{-label}
 or @code{-line}) refer to the line that begins the body of the function.
 In C, for example, this is the line with the open brace.
+
+For C@t{++}, @var{function} is interpreted as specifying all functions
+named @var{function} ignoring missing leading specifiers (namespaces
+and classes).
+
+For example, assuming a program with symbols named @code{A::B::func}
+and @code{B::func}, both commands @code{break -function func} and
+@code{break -function B::func} set a breakpoint on both symbols.
+
+@item -qualified @var{function}
+Like @code{-function}, but the value specifies a fully qualified name
+of a function.
+
+For example, assuming a C@t{++} program with symbols named
+@code{A::B::func} and @code{B::func}, the @code{break -qualified
+B::func} command sets a breakpoint on @code{B::func}, only.
 
 @item -label @var{label}
 The value specifies the name of a label.  When the function

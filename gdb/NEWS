@@ -3,6 +3,42 @@
 
 *** Changes since GDB 8.0
 
+* Breakpoints / linespecs / explicit locations improvements
+
+  ** Breakpoints on C++ functions change
+
+    By default, breakpoints on functions are now interpreted as
+    specifying all functions with the given name ignoring missing
+    leading specifiers (namespaces and classes).
+
+    For example, assuming a C++ program with symbols named:
+
+      A::B::func
+      B::func
+
+    both commands "break func" and "break B::func" set a breakpoint on
+    both symbols.  The explicit location option "-function" was
+    changed accordingly.
+
+    To override this, you can specify an explicitly fully qualified
+    name, usign the new explicit location option "-qualified".  For
+    example, using the same C++ program, the "break -qualified
+    B::func" command sets a breakpoint on "B::func", only.
+
+  ** GDB now has a much improved linespec and explicit locations TAB
+     completion support, that better understands what you're
+     completing and offers better suggestions.
+
+  ** GDB can now complete function parameters in linespecs and
+     explicit locations, even without quoting.  When setting
+     breakpoints, quoting around functions names to help with
+     TAB-completion is generally no longer necessary.
+
+  ** GDB can now TAB-complete label symbol names.
+
+  ** GDB can now set breakpoints functions marked with [abi:cxx11]
+     tags.
+
 *** Changes in GDB 8.0
 
 * GDB now supports access to the PKU register on GNU/Linux. The register is
