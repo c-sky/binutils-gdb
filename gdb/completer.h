@@ -192,6 +192,16 @@ public:
   /* Advance the custom word point by LEN.  */
   void advance_custom_word_point_by (size_t len);
 
+  /* Whether to tell readline to skip appending a whitespace after the
+     completion.  See m_suppress_append_ws.  */
+  bool suppress_append_ws () const
+  { return m_suppress_append_ws; }
+
+  /* Set whether to tell readline to skip appending a whitespace after
+     the completion.  See m_suppress_append_ws.  */
+  void set_suppress_append_ws (bool suppress)
+  { m_suppress_append_ws = suppress; }
+
   /* Return true if we only have one completion, and it matches
      exactly the completion word.  I.e., completing results in what we
      already have.  */
@@ -254,6 +264,14 @@ private:
      handle_brkchars phase as the completer discovers potential
      completable words.  */
   int m_custom_word_point = 0;
+
+  /* If true, tell readline to skip appending a whitespace after the
+     completion.  Automatically set if we have a unique completion
+     that already has a space at the end.  Completer may also
+     explicitly set this.  E.g., the linespec completer sets when when
+     the completion ends with the ":" separator between filename and
+     function name.  */
+  bool m_suppress_append_ws = false;
 
   /* Our idea of lowest common denominator to hand over to readline.
      See intro.  */
@@ -346,6 +364,11 @@ extern completer_handle_brkchars_ftype *
   completer_handle_brkchars_func_for_completer (completer_ftype *fn);
 
 /* Exported to linespec.c */
+
+extern completion_list complete_source_filenames (const char *text);
+
+extern void complete_expression (completion_tracker &tracker,
+				 const char *text, const char *word);
 
 extern const char *skip_quoted_chars (const char *, const char *,
 				      const char *);

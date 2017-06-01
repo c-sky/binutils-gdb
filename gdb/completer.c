@@ -45,9 +45,6 @@
 
 #include "completer.h"
 
-static void complete_expression (completion_tracker &tracker,
-				 const char *text, const char *word);
-
 /* Misc state that needs to be tracked across several different
    readline completer entry point calls, all related to a single
    completion invocation.  */
@@ -564,8 +561,47 @@ complete_files_symbols (completion_tracker &tracker,
     }
 }
 
+/* Return a list of all source files whose names begin with matching
+   TEXT.  */
+
+completion_list
+complete_source_filenames (const char *text)
+{
+  size_t text_len = strlen (text);
+
+  /* If text includes characters which cannot appear in a file name,
+     the user cannot be asking for completion on files.  */
+  if (strcspn (text,
+	       gdb_completer_file_name_break_characters)
+      == text_len)
+    return make_source_files_completion_list (text, text);
+
+  return {};
+}
+
+/* Complete address and linespec locations.  */
+
+static void
+complete_address_and_linespec_locations (completion_tracker &tracker,
+					 const char *text)
+{
+  if (*text == '*')
+    {
+      tracker.advance_custom_word_point_by (1);
+      text++;
+      const char *word
+	= advance_to_expression_complete_word_point (tracker, text);
+      complete_expression (tracker, text, word);
+    }
+  else
+    {
+      linespec_complete (tracker, text);
+    }
+}
+
 /* The explicit location options.  Note that indexes into this array
    must match the explicit_location_match_type enumerators.  */
+
 static const char *const explicit_options[] =
   {
     "-source",
@@ -807,7 +843,7 @@ complete_explicit_location (completion_tracker &tracker,
 void
 location_completer (struct cmd_list_element *ignore,
 		    completion_tracker &tracker,
-		    const char *text, const char *word_entry)
+		    const char *text, const char * /* word */)
 {
   int found_probe_option = -1;
 
@@ -878,27 +914,7 @@ location_completer (struct cmd_list_element *ignore,
   else
     {
       /* This is an address or linespec location.  */
-      if (*text == '*')
-	{
-	  tracker.advance_custom_word_point_by (1);
-	  text++;
-	  const char *word
-	    = advance_to_expression_complete_word_point (tracker, text);
-	  complete_expression (tracker, text, word);
-	}
-      else
-	{
-	  /* Fall back to the old linespec completer, for now.  */
-
-	  if (word_entry == NULL)
-	    {
-	     /* We're in the handle_brkchars phase.  */
-	      tracker.set_use_custom_word_point (false);
-	      return;
-	    }
-
-	  complete_files_symbols (tracker, text, word_entry);
-	}
+      complete_address_and_linespec_locations (tracker, text);
     }
 
   /* Add matches for option names, if either:
@@ -994,7 +1010,7 @@ add_struct_fields (struct type *type, completion_list &output,
    names, but some language parsers also have support for completing
    field names.  */
 
-static void
+void
 complete_expression (completion_tracker &tracker,
 		     const char *text, const char *word)
 {
@@ -1945,10 +1961,12 @@ completion_tracker::build_completion_result (const char *text,
 				buf, (char *) NULL);
       match_list[1] = NULL;
 
-      /* If we already have a space at the end of the match, tell
-	 readline to skip appending another.  */
+      /* If the tracker wants to, or we already have a space at the
+	 end of the match, tell readline to skip appending
+	 another.  */
       bool completion_suppress_append
-	= (match_list[0][strlen (match_list[0]) - 1] == ' ');
+	= (suppress_append_ws ()
+	   || match_list[0][strlen (match_list[0]) - 1] == ' ');
 
       return completion_result (match_list, 1, completion_suppress_append);
     }
