@@ -203,6 +203,10 @@ extern void complete_line (completion_tracker &tracker,
 			   const char *line_buffer,
 			   int point);
 
+extern const char *completion_find_completion_word (completion_tracker &tracker,
+						    const char *text,
+						    int *quote_char);
+
 extern char **gdb_rl_attempted_completion_function (const char *text,
 						    int start, int end);
 
