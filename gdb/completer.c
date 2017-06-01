@@ -505,6 +505,7 @@ complete_files_symbols (completion_tracker &tracker,
     {
       collect_file_symbol_completion_matches (tracker,
 					      complete_symbol_mode::EXPRESSION,
+					      symbol_name_match_type::EXPRESSION,
 					      symbol_start, word,
 					      file_to_match);
       xfree (file_to_match);
@@ -515,6 +516,7 @@ complete_files_symbols (completion_tracker &tracker,
 
       collect_symbol_completion_matches (tracker,
 					 complete_symbol_mode::EXPRESSION,
+					 symbol_name_match_type::EXPRESSION,
 					 symbol_start, word);
       /* If text includes characters which cannot appear in a file
 	 name, they cannot be asking for completion on files.  */
@@ -557,6 +559,7 @@ complete_files_symbols (completion_tracker &tracker,
 	 on the entire text as a symbol.  */
       collect_symbol_completion_matches (tracker,
 					 complete_symbol_mode::EXPRESSION,
+					 symbol_name_match_type::EXPRESSION,
 					 orig_text, word);
     }
 }
@@ -1113,6 +1116,7 @@ symbol_completer (struct cmd_list_element *ignore,
 		  const char *text, const char *word)
 {
   collect_symbol_completion_matches (tracker, complete_symbol_mode::EXPRESSION,
+				     symbol_name_match_type::EXPRESSION,
 				     text, word);
 }
 
