@@ -4995,6 +4995,7 @@ add_symtab_completions (struct compunit_symtab *cust,
 void
 default_collect_symbol_completion_matches_break_on
   (completion_tracker &tracker,
+   complete_symbol_mode mode,
    const char *text, const char *word,
    const char *break_on, enum type_code code)
 {
@@ -5013,8 +5014,12 @@ default_collect_symbol_completion_matches_break_on
   const char *sym_text;
   /* Length of sym_text.  */
   int sym_text_len;
+  struct cleanup *cleanups;
 
   /* Now look for the symbol we are supposed to complete on.  */
+  if (mode == complete_symbol_mode::LINESPEC)
+    sym_text = text;
+  else
   {
     const char *p;
     char quote_found;
@@ -5220,10 +5225,11 @@ default_collect_symbol_completion_matches_break_on
 
 void
 default_collect_symbol_completion_matches (completion_tracker &tracker,
+					   complete_symbol_mode mode,
 					   const char *text, const char *word,
 					   enum type_code code)
 {
-  return default_collect_symbol_completion_matches_break_on (tracker,
+  return default_collect_symbol_completion_matches_break_on (tracker, mode,
 							     text, word, "",
 							     code);
 }
@@ -5234,9 +5240,10 @@ default_collect_symbol_completion_matches (completion_tracker &tracker,
 
 void
 collect_symbol_completion_matches (completion_tracker &tracker,
+				   complete_symbol_mode mode,
 				   const char *text, const char *word)
 {
-  current_language->la_collect_symbol_completion_matches (tracker,
+  current_language->la_collect_symbol_completion_matches (tracker, mode,
 							  text, word,
 							  TYPE_CODE_UNDEF);
 }
@@ -5249,10 +5256,12 @@ collect_symbol_completion_matches_type (completion_tracker &tracker,
 					const char *text, const char *word,
 					enum type_code code)
 {
+  complete_symbol_mode mode = complete_symbol_mode::EXPRESSION;
+
   gdb_assert (code == TYPE_CODE_UNION
 	      || code == TYPE_CODE_STRUCT
 	      || code == TYPE_CODE_ENUM);
-  current_language->la_collect_symbol_completion_matches (tracker,
+  current_language->la_collect_symbol_completion_matches (tracker, mode,
 							  text, word, code);
 }
 
@@ -5261,6 +5270,7 @@ collect_symbol_completion_matches_type (completion_tracker &tracker,
 
 void
 collect_file_symbol_completion_matches (completion_tracker &tracker,
+					complete_symbol_mode mode,
 					const char *text, const char *word,
 					const char *srcfile)
 {
@@ -5271,6 +5281,9 @@ collect_file_symbol_completion_matches (completion_tracker &tracker,
 
   /* Now look for the symbol we are supposed to complete on.
      FIXME: This should be language-specific.  */
+  if (mode == complete_symbol_mode::LINESPEC)
+    sym_text = text;
+  else
   {
     const char *p;
     char quote_found;
