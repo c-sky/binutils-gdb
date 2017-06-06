@@ -138,6 +138,7 @@ TARGET_CPU_CFILES = \
 	config/tc-cr16.c \
 	config/tc-cris.c \
 	config/tc-crx.c \
+	config/tc-csky.c \
 	config/tc-d10v.c \
 	config/tc-d30v.c \
 	config/tc-dlx.c \
@@ -212,6 +213,7 @@ TARGET_CPU_HFILES = \
 	config/tc-cr16.h \
 	config/tc-cris.h \
 	config/tc-crx.h \
+	config/tc-csky.h \
 	config/tc-d10v.h \
 	config/tc-d30v.h \
 	config/tc-dlx.h \
@@ -308,6 +310,7 @@ TARG_ENV_HFILES = \
 	config/te-armfbsdeabi.h \
 	config/te-armfbsdvfp.h \
 	config/te-armlinuxeabi.h \
+	config/te-csky.h \
 	config/te-dynix.h \
 	config/te-epoc-pe.h \
 	config/te-freebsd.h \

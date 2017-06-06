@@ -214,6 +214,9 @@ ALL_EMULATION_SOURCES = \
 	ecrisaout.c \
 	ecriself.c \
 	ecrislinux.c \
+	ecskyelf.c \
+	ecskyelf_linux.c \
+	ecskyelf_uclinux.c \
 	ed10velf.c \
 	ed30v_e.c \
 	ed30v_o.c \
@@ -922,6 +925,15 @@ ecriself.c: $(srcdir)/emulparams/criself.sh \
   $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
 
 ecrislinux.c: $(srcdir)/emulparams/crislinux.sh \
+  $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
+
+ecskyelf.c: $(srcdir)/emulparams/cskyelf.sh \
+  $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
+
+ecskyelf_linux.c: $(srcdir)/emulparams/cskyelf_linux.sh \
+  $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
+
+ecskyelf_uclinux.c: $(srcdir)/emulparams/cskyelf_linux.sh \
   $(ELF_DEPS) $(srcdir)/scripttempl/elf.sc ${GEN_DEPENDS}
 
 ed10velf.c: $(srcdir)/emulparams/d10velf.sh \

@@ -1,0 +1,4 @@
+.text
+hello:
+    jbsr hello
+

@@ -432,6 +432,7 @@ TARGET_CPU_CFILES = \
 	config/tc-cr16.c \
 	config/tc-cris.c \
 	config/tc-crx.c \
+	config/tc-csky.c \
 	config/tc-d10v.c \
 	config/tc-d30v.c \
 	config/tc-dlx.c \
@@ -506,6 +507,7 @@ TARGET_CPU_HFILES = \
 	config/tc-cr16.h \
 	config/tc-cris.h \
 	config/tc-crx.h \
+	config/tc-csky.h \
 	config/tc-d10v.h \
 	config/tc-d30v.h \
 	config/tc-dlx.h \
@@ -602,6 +604,7 @@ TARG_ENV_HFILES = \
 	config/te-armfbsdeabi.h \
 	config/te-armfbsdvfp.h \
 	config/te-armlinuxeabi.h \
+	config/te-csky.h \
 	config/te-dynix.h \
 	config/te-epoc-pe.h \
 	config/te-freebsd.h \
@@ -860,6 +863,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tc-cr16.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tc-cris.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tc-crx.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tc-csky.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tc-d10v.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tc-d30v.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tc-dlx.Po@am__quote@
@@ -1072,6 +1076,21 @@ tc-crx.obj: config/tc-crx.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='config/tc-crx.c' object='tc-crx.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o tc-crx.obj `if test -f 'config/tc-crx.c'; then $(CYGPATH_W) 'config/tc-crx.c'; else $(CYGPATH_W) '$(srcdir)/config/tc-crx.c'; fi`
+
+tc-csky.o: config/tc-csky.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT tc-csky.o -MD -MP -MF $(DEPDIR)/tc-csky.Tpo -c -o tc-csky.o `test -f 'config/tc-csky.c' || echo '$(srcdir)/'`config/tc-csky.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/tc-csky.Tpo $(DEPDIR)/tc-csky.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='config/tc-csky.c' object='tc-csky.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o tc-csky.o `test -f 'config/tc-csky.c' || echo '$(srcdir)/'`config/tc-csky.c
+
+tc-csky.obj: config/tc-csky.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT tc-csky.obj -MD -MP -MF $(DEPDIR)/tc-csky.Tpo -c -o tc-csky.obj `if test -f 'config/tc-csky.c'; then $(CYGPATH_W) 'config/tc-csky.c'; else $(CYGPATH_W) '$(srcdir)/config/tc-csky.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/tc-csky.Tpo $(DEPDIR)/tc-csky.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='config/tc-csky.c' object='tc-csky.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o tc-csky.obj `if test -f 'config/tc-csky.c'; then $(CYGPATH_W) 'config/tc-csky.c'; else $(CYGPATH_W) '$(srcdir)/config/tc-csky.c'; fi`
+
 
 tc-d10v.o: config/tc-d10v.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT tc-d10v.o -MD -MP -MF $(DEPDIR)/tc-d10v.Tpo -c -o tc-d10v.o `test -f 'config/tc-d10v.c' || echo '$(srcdir)/'`config/tc-d10v.c

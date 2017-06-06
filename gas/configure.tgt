@@ -58,6 +58,7 @@ case ${cpu} in
   cr16*)		cpu_type=cr16 endian=little ;;
   crisv32)		cpu_type=cris arch=crisv32 ;;
   crx*)			cpu_type=crx endian=little ;;
+  ck*)			cpu_type=csky arch=csky ;;
   epiphany*)		cpu_type=epiphany endian=little ;;
   fido)			cpu_type=m68k ;;
   hppa*)		cpu_type=hppa ;;
@@ -174,6 +175,13 @@ case ${generic_target} in
   cris-*-* | crisv32-*-*)		fmt=multi ;;
 
   crx-*-elf*)				fmt=elf ;;
+
+  csky-unknown-elf)			fmt=elf em=csky_abiv1 ;;
+  csky-abiv2-elf)			fmt=elf em=csky_abiv2 ;;
+  csky-unknown-linux*)		fmt=elf em=csky_abiv1_linux ;;
+  csky-abiv2-linux*)		fmt=elf em=csky_abiv2_linux ;;
+  csky-*-ecos-*)			fmt=elf ;;
+  csky-*-uclinux-*)			fmt=elf ;;
 
   d10v-*-*)				fmt=elf ;;
   d30v-*-*)				fmt=elf ;;
@@ -488,7 +496,7 @@ case ${generic_target} in
 esac
 
 case ${cpu_type} in
-  aarch64 | alpha | arm | i386 | ia64 | microblaze | mips | ns32k | or1k | or1knd | pdp11 | ppc | sparc | z80 | z8k)
+  aarch64 | alpha | arm | csky | i386 | ia64 | microblaze | mips | ns32k | or1k | or1knd | pdp11 | ppc | sparc | z80 | z8k)
     bfd_gas=yes
     ;;
 esac

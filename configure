@@ -3777,6 +3777,9 @@ case "${target}" in
   c4x-*-* | tic4x-*-*)
     noconfigdirs="$noconfigdirs target-libgloss"
     ;;
+  csky-*-*)
+    noconfigdirs="$noconfigdirs gdb"
+    ;;
   tic54x-*-*)
     noconfigdirs="$noconfigdirs target-libgloss gdb"
     ;;

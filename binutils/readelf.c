@@ -98,6 +98,7 @@
 #include "elf/cr16.h"
 #include "elf/cris.h"
 #include "elf/crx.h"
+#include "elf/csky.h"
 #include "elf/d10v.h"
 #include "elf/d30v.h"
 #include "elf/dlx.h"
@@ -741,6 +742,7 @@ guess_is_rela (unsigned int e_machine)
     case EM_CR16:
     case EM_CRIS:
     case EM_CRX:
+    case EM_CSKY:
     case EM_D30V:
     case EM_CYGNUS_D30V:
     case EM_FR30:
@@ -1268,6 +1270,10 @@ dump_relocations (FILE * file,
 
 	case EM_CYGNUS_FRV:
 	  rtype = elf_frv_reloc_type (type);
+	  break;
+
+	case EM_CSKY:
+	  rtype = elf_csky_reloc_type (type);
 	  break;
 
 	case EM_FT32:
@@ -2189,6 +2195,7 @@ get_machine_name (unsigned e_machine)
     case EM_FT32:		return "FTDI FT32";
     case EM_RH32:		return "TRW RH32";
     case EM_MCORE:		return "MCORE";
+    case EM_CSKY:               return "CSKY";
     case EM_ARM:		return "ARM";
     case EM_OLD_ALPHA:		return "Digital Alpha (old)";
     case EM_SH:			return "Renesas / SuperH SH";
@@ -11530,6 +11537,8 @@ is_32bit_abs_reloc (unsigned int reloc_type)
       return reloc_type == 3; /* R_CR16_NUM32.  */
     case EM_CRX:
       return reloc_type == 15; /* R_CRX_NUM32.  */
+    case EM_CSKY:
+      return reloc_type == 1; /* R_CKCORE_ADDR32.  */
     case EM_CYGNUS_FRV:
       return reloc_type == 1;
     case EM_CYGNUS_D10V:

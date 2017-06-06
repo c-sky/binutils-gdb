@@ -525,6 +525,7 @@ DESCRIPTION
 .#define bfd_mach_nios2r2	2
 .  bfd_arch_visium,	{* Visium *}
 .#define bfd_mach_visium	1
+.  bfd_arch_csky,
 .  bfd_arch_last
 .  };
 */
@@ -579,6 +580,7 @@ extern const bfd_arch_info_type bfd_cr16_arch;
 extern const bfd_arch_info_type bfd_cr16c_arch;
 extern const bfd_arch_info_type bfd_cris_arch;
 extern const bfd_arch_info_type bfd_crx_arch;
+extern const bfd_arch_info_type bfd_csky_arch;
 extern const bfd_arch_info_type bfd_d10v_arch;
 extern const bfd_arch_info_type bfd_d30v_arch;
 extern const bfd_arch_info_type bfd_dlx_arch;
@@ -671,6 +673,7 @@ static const bfd_arch_info_type * const bfd_archures_list[] =
     &bfd_cr16c_arch,
     &bfd_cris_arch,
     &bfd_crx_arch,
+    &bfd_csky_arch,
     &bfd_d10v_arch,
     &bfd_d30v_arch,
     &bfd_dlx_arch,
