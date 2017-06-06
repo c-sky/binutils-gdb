@@ -378,6 +378,11 @@ mips*-*-*)
 	gdb_sim=../sim/mips/libsim.a
 	;;
 
+csky*-*-*)
+        # Target: CSKY
+        gdb_target_obs="csky-tdep.o solib-svr4.o remote-csky.o csky-eCos-nat.o"
+        ;;
+
 mn10300-*-*)
 	# Target: Matsushita mn10300
 	gdb_target_obs="mn10300-tdep.o"

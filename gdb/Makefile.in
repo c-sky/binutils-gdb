@@ -661,6 +661,7 @@ ALL_TARGET_OBS = \
 	arm-get-next-pcs.o arm-symbian-tdep.o \
 	armnbsd-tdep.o armobsd-tdep.o \
 	arm-tdep.o arm-wince-tdep.o \
+        csky-tdep.o \
 	avr-tdep.o \
 	bfin-linux-tdep.o bfin-tdep.o \
 	cris-linux-tdep.o cris-tdep.o \
@@ -916,7 +917,7 @@ ppcnbsd-tdep.h cli-out.h gdb_expat.h breakpoint.h infcall.h obsd-tdep.h \
 exec.h m32r-tdep.h osabi.h gdbcore.h x86bsd-nat.h \
 i386bsd-nat.h xml-support.h xml-tdesc.h alphabsd-tdep.h gdb_obstack.h \
 ia64-tdep.h ada-lang.h varobj.h varobj-iter.h frv-tdep.h \
-nto-tdep.h serial.h \
+nto-tdep.h serial.h csky-tdep.h csky-kernel.h \
 c-lang.h d-lang.h go-lang.h frame.h event-loop.h block.h cli/cli-setshow.h \
 cli/cli-decode.h cli/cli-cmds.h cli/cli-utils.h \
 cli/cli-script.h macrotab.h symtab.h common/version.h \
@@ -1729,6 +1730,7 @@ ALLDEPFILES = \
 	mips-tdep.c \
 	mipsnbsd-nat.c mipsnbsd-tdep.c \
 	mips64obsd-nat.c mips64obsd-tdep.c \
+        csky-tdep.c remote-csky.c csky-eCos-nat.c\
 	msp430-tdep.c \
 	nds32-tdep.c \
 	nios2-tdep.c nios2-linux-tdep.c \

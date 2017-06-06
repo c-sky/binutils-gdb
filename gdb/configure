@@ -12967,6 +12967,34 @@ $as_echo "#define _KMEMUSER 1" >>confdefs.h
   esac
 fi
 
+
+# Add for csky_gdb 7.12 2016/12/27
+case "${target}" in
+  csky-abiv2-ecos* )
+
+$as_echo "#define CSKYGDB_CONFIG_ECOS 1" >>confdefs.h
+$as_echo "#define CSKYGDB_CONFIG_ABIV2 1" >>confdefs.h
+$as_echo "#define CSKYGDB_CONFIG 1" >>confdefs.h
+      ;;
+
+  csky-ecos-* )
+
+$as_echo "#define CSKYGDB_CONFIG_ECOS 1" >>confdefs.h
+$as_echo "#define CSKYGDB_CONFIG 1" >>confdefs.h
+      ;;
+  csky-abiv2-* )
+
+$as_echo "#define CSKYGDB_CONFIG_ABIV2 1" >>confdefs.h
+$as_echo "#define CSKYGDB_CONFIG 1" >>confdefs.h
+      ;;
+  csky-* )
+$as_echo "#define CSKYGDB_CONFIG 1" >>confdefs.h
+      ;;
+  *)
+      ;;
+esac
+
+
 if test "$ac_cv_header_sys_procfs_h" = yes; then
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for gregset_t in sys/procfs.h" >&5
 $as_echo_n "checking for gregset_t in sys/procfs.h... " >&6; }

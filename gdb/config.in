@@ -1,5 +1,14 @@
 /* config.in.  Generated from configure.ac by autoheader.  */
 
+/* Define if the compiler is building for csky eCos architecture. */
+#undef CSKYGDB_CONFIG_ECOS
+
+/* Define if the compiler is building for csky abiv2 architecture. */
+#undef CSKYGDB_CONFIG_ABIV2
+
+/* Define if the target is csky architecture. */
+#undef CSKYGDB_CONFIG
+
 /* Define if building universal (internal helper macro) */
 #undef AC_APPLE_UNIVERSAL_BUILD
 
