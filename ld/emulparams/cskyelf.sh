@@ -24,6 +24,7 @@ EXTRA_EM_FILE=cskyelf
 # not matter.
 NOP=0
 
+ENTRY=__start
 OTHER_BSS_SYMBOLS="__bss_start__ = . ;"
 OTHER_BSS_END_SYMBOLS="__bss_end__ = . ;"
 

@@ -44,7 +44,7 @@
 #define BUILD_AS          1
 
 #define OPCODE_MAX_LEN    20
-#define HAS_SUB_OPERAND   0xffffffff
+#define HAS_SUB_OPERAND   0xfffffffful
 
 /* This value is just for lrw to distinguish "[]" label.  */
 #define NEED_OUTPUT_LITERAL           1
@@ -53,9 +53,25 @@
 #define IS_SUPPORT_OPCODE16(opcode)   (opcode->isa_flag16 | isa_flag)
 #define IS_SUPPORT_OPCODE32(opcode)   (opcode->isa_flag32 | isa_flag)
 
+/* This macro is used to set error number and error message.  */
+#define SET_ERROR_NUMBER(err, msg)                      \
+          do {                                          \
+            if (errs.err_num > err)                     \
+              {                                         \
+                errs.err_num = err;                     \
+                errs.arg1 = (void *)msg;                \
+              }                                         \
+          } while (0)
+
+
 #define KB                * 1024
 #define MB                KB * 1024
 #define GB                MB * 1024
+
+/* Define DSP version flags. For different CPU, the version of DSP
+   instructions may be different.  */
+#define CSKY_DSP_FLAG_V1          (1 << 0) /* Normal DSP instructions.  */
+#define CSKY_DSP_FLAG_V2          (1 << 1) /* CK803S enhance DSP instructions.  */
 
 /* Add literal pool related macro here.  */
 /* 1024 - 1 entry - 2 byte rounding.*/
@@ -161,6 +177,8 @@ bfd_boolean v2_work_jbsr (void);
 bfd_boolean v2_work_jsri (void);
 bfd_boolean v2_work_movih (void);
 bfd_boolean v2_work_ori (void);
+bfd_boolean float_work_fmovi (void);
+bfd_boolean dsp_work_bloop (void);
 /* csky-opc.h must be include after works defines.  */
 #include "opcodes/csky-opc.h"
 #include "opcode/csky.h"
@@ -194,10 +212,12 @@ enum
   LRW_DISP16,     /* lrw32.  */
 };
 
+
 unsigned int mach_flag = 0;
 unsigned int arch_flag = 0;
 unsigned int other_flag = 0;
 unsigned int isa_flag = 0;
+unsigned int dsp_flag = 0;
 
 typedef struct stack_size_entry
 {
@@ -256,8 +276,8 @@ enum error_number
 {
   /* The followings are errors.  */
   ERROR_CREG_ILLEGAL = 0,
-  ERROR_GREG_ILLEGAL,
   ERROR_REG_OVER_RANGE,
+  ERROR_GREG_ILLEGAL,
   ERROR_802J_REG_OVER_RANGE,
   ERROR_REG_FORMAT,
   ERROR_REG_LIST,
@@ -282,6 +302,7 @@ enum error_number
   ERROR_BAD_END,
   ERROR_UNDEFINE,
   ERROR_CPREG_ILLEGAL,           /* 20  */
+  ERROR_OPCODE_PSRBIT,
   ERROR_OPERANDS_ILLEGAL,
   ERROR_OPERANDS_NUMBER,
   ERROR_OPCODE_ILLEGAL,
@@ -289,7 +310,6 @@ enum error_number
   /* The followings are warnings.  */
   WARNING_OPTIONS,
   WARNING_IDLY,
-  WARNING_BMASKI_TO_MOVI,
   /* Error and warning end.  */
   ERROR_NONE,
 };
@@ -343,7 +363,10 @@ struct _csky_insn
       int var;
       int subtype;
     } relax;
-  expressionS e;
+  /* The following used to express.  */
+  uint64_t dbnum;
+  expressionS e1;
+  expressionS e2;
 };
 
 struct tls_addend {
@@ -387,21 +410,21 @@ struct _errs
 {
   int err_num;
   int idx;
-  void *arg1;
-  void *arg2;
+  const void *arg1;
+  const void *arg2;
 } errs;
 
 /* Error infomation lists.  */
 static const struct _err_info err_infos[] =
 {
   {ERROR_CREG_ILLEGAL, "Operand %d error: control register is illegal."},
+  {ERROR_REG_OVER_RANGE, "Operand %d error: r%d register is over range."},
   {ERROR_GREG_ILLEGAL, "Operand %d error: general register is illegal."},
-  {ERROR_REG_OVER_RANGE, "Operand %d error: %s register is over range."},
   {ERROR_802J_REG_OVER_RANGE, "Operandr %d register %s out of range (802j only has registers:0-15,23,24,25,30)"},
   {ERROR_REG_FORMAT, "Operand %d error: %s."},
   {ERROR_REG_LIST, "Register list format is illegal."},
   {ERROR_IMM_ILLEGAL, "Operand %d is not an immediate."},
-  {ERROR_IMM_OVERFLOW, "Operand %d is overflow."},
+  {ERROR_IMM_OVERFLOW, "Operand %d immediate is overflow."},
   {ERROR_IMM_POWER, "immediate %d is not a power of two"},
   {ERROR_JMPIX_OVER_RANGE, "The second operand must be 16/24/32/40"},
   {ERROR_EXP_CREG, "Operand %d error: control register is expected."},
@@ -421,12 +444,12 @@ static const struct _err_info err_infos[] =
   {ERROR_BAD_END, "Operands mismatch, it has a bad end: %s"},
   {ERROR_UNDEFINE, NULL},
   {ERROR_CPREG_ILLEGAL, "Operand %d illegal, expect a cpreg(cpr0-cpr63)."},
+  {ERROR_OPCODE_PSRBIT, "The operands must be 'ie'/'ee'/'fe'."},
   {ERROR_OPERANDS_ILLEGAL, "Operands mismatch: %s."},
   {ERROR_OPERANDS_NUMBER, "Operands number mismatch, %d operands expected."},
   {ERROR_OPCODE_ILLEGAL, "The instruction is not recognized."},
   {WARNING_OPTIONS, "Option %s is not support in %s."},
   {WARNING_IDLY, "idly %d is encoded to: idly 4 "},
-  {WARNING_BMASKI_TO_MOVI, "translating bmaski to movi."},
   {ERROR_NONE, "There is no error."},
 };
 
@@ -441,7 +464,7 @@ static int do_extend_lrw = -1;    /* delete bsr16 in both two options,
                                      add btesti16 ,lrw offset +1 in -melrw.  */
 static int do_func_dump = 0;      /* dump literals after every function.  */
 static int do_br_dump = 1;        /* work for -mabr/-mno-abr, control the literals dump.  */
-static int do_intr_stack = -1;    /* control interrupt stack module, 801&802&803&803S
+static int do_intr_stack = -1;    /* control interrupt stack module, 801&802&803
                                      default open, 807&810, default close.  */
 static int do_callgraph_call= 1;  /* control to reserve function call related relocs,
                                      default on. This option hasn't implenment,
@@ -525,21 +548,27 @@ struct _csky_option_table csky_opts[] =
     "-mmp    \t\t\tsupport multiple processor instructions\n"},
   {"mcp",                     (int *)&other_flag, CSKY_ARCH_CP,    OPTS_OPERATION_OR,
     "-mcp    \t\t\tsupport coprocessor instructions\n"},
-  {"mdsp",                    (int *)&other_flag, CSKY_ARCH_DSP,   OPTS_OPERATION_OR,
+  {"mdsp",                    (int *)&dsp_flag, CSKY_DSP_FLAG_V1,   OPTS_OPERATION_OR,
     "-mdsp    \t\t\tsupport csky DSP instructions\n"},
   {"mcache",                  (int *)&other_flag, CSKY_ARCH_CACHE, OPTS_OPERATION_OR,
     "-mcache    \t\t\tsupport cache prefetch instruction\n"},
   {"msecurity",               (int *)&other_flag, CSKY_ARCH_MAC,   OPTS_OPERATION_OR,
-    "-mdsp    \t\t\tsupport csky DSP instructions\n"},
+    "-msecurity    \t\t\tsupport csky security instructions\n"},
   {"mhard-float",             (int *)&other_flag, CSKY_ARCH_FLOAT, OPTS_OPERATION_OR,
     "-mhard-float    \t\tsupport hard float instructions\n"},
+  {"mtrust",                 (int *)&isa_flag, CSKY_ISA_TRUST, OPTS_OPERATION_OR,
+    "-mtrust    \t\t\tsupport csky trust instructions\n"},
+  {"medsp",                 (int *)&dsp_flag, CSKY_DSP_FLAG_V2, OPTS_OPERATION_OR,
+    "-medsp    \t\t\tsupport csky enhance dsp instructions\n"},
+  {"mvdsp",                 (int *)&isa_flag, CSKY_ISA_VDSP, OPTS_OPERATION_OR,
+    "-mvdsp    \t\t\tsupport csky vector dsp instructions\n"},
   {NULL, NULL, 0, 0, NULL}
 };
 
 struct _csky_long_option csky_long_opts[] =
 {
-  {"mcpu=", "-mcpu=[ck510, ck610, ...] \tset CPU, 510[e]/520/610[ef]/801/802[e]/802P\n\t\t\t\t/803[e]/803P/803s[ef]/810[ef]/810P(default: 610)\n", parse_cpu},
-  {"march=", "-march=[ck510, ck610, ...] \tset arch, 510/610/801/802/803/807/810(default: 610)\n", parse_arch},
+  {"mcpu=", NULL, parse_cpu},
+  {"march=", NULL, parse_arch},
   {NULL, NULL, NULL}
 };
 
@@ -639,14 +668,15 @@ md_pcrel_from_section (fixS * fixP, segT seg);
 /* CSKY architecture table.  */
 const struct _csky_arch csky_archs[] =
 {
-  {"ck510", CSKY_ARCH_510, bfd_mach_ck510},
-  {"ck610", CSKY_ARCH_610, bfd_mach_ck610},
-  {"ck801", CSKY_ARCH_801, bfd_mach_ck801},
-  {"ck802", CSKY_ARCH_802, bfd_mach_ck802},
-  {"ck803", CSKY_ARCH_803, bfd_mach_ck803},
-  {"ck803s", CSKY_ARCH_803S, bfd_mach_ck803s},
-  {"ck807", CSKY_ARCH_807, bfd_mach_ck807},
-  {"ck810", CSKY_ARCH_810, bfd_mach_ck810},
+  {"ck510",  CSKY_ARCH_510,  bfd_mach_ck510},
+  {"ck610",  CSKY_ARCH_610,  bfd_mach_ck610},
+  {"ck801",  CSKY_ARCH_801,  bfd_mach_ck801},
+  {"ck802",  CSKY_ARCH_802,  bfd_mach_ck802},
+  {"ck803",  CSKY_ARCH_803,  bfd_mach_ck803},
+#define CSKY_ARCH_807_BASE    CSKY_ARCH_807 | CSKY_ARCH_DSP
+#define CSKY_ARCH_810_BASE    CSKY_ARCH_810 | CSKY_ARCH_DSP
+  {"ck807",  CSKY_ARCH_807_BASE,  bfd_mach_ck807},
+  {"ck810",  CSKY_ARCH_810_BASE,  bfd_mach_ck810},
   {NULL, 0, 0}
 };
 
@@ -670,44 +700,80 @@ const struct _csky_cpu csky_cpus[] =
 
   /* CK801 series.  */
 #define CSKY_ISA_801    CSKYV2_ISA_E1
-#define CSKYV2_ISA_DSP  (CSKY_ISA_DSP | CSKY_ISA_DSP_1E2 | CSKY_ISA_DSP_FLOAT)
+#define CSKYV2_ISA_DSP  (CSKY_ISA_DSP | CSKY_ISA_DSP_1E2)
   {"ck801", CSKY_ARCH_801, CSKY_ISA_801, "-mcpu=ck801"},
+  {"ck801t", CSKY_ARCH_801, CSKY_ISA_801 | CSKY_ISA_TRUST, "-mcpu=ck801t"},
 
   /* CK802 series.  */
 #define CSKY_ISA_802    (CSKY_ISA_801 | CSKYV2_ISA_1E2 | CSKY_ISA_NVIC)
   {"ck802", CSKY_ARCH_802, CSKY_ISA_802, "-mcpu=ck802"},
-  {"ck802e", CSKY_ARCH_802 | CSKY_ARCH_DSP, CSKY_ISA_802 | CSKYV2_ISA_DSP, "-mcpu=ck802e"},
   {"ck802j", CSKY_ARCH_802 | CSKY_ARCH_JAVA, CSKY_ISA_802 | CSKY_ISA_JAVA, "-mcpu=ck802j"},
+  {"ck802t", CSKY_ARCH_802, CSKY_ISA_802 | CSKY_ISA_TRUST, "-mcpu=ck802t"},
 
   /* CK803 series.  */
-#define CSKY_ISA_803    (CSKY_ISA_802 | CSKYV2_ISA_2E3)
-  {"ck803", CSKY_ARCH_803, CSKY_ISA_803, "-mcpu=ck803"},
+#define CSKY_ISA_803    (CSKY_ISA_802 | CSKYV2_ISA_2E3 | CSKY_ISA_MP)
+#define CSKY_ISA_803R1  (CSKY_ISA_803 | CSKYV2_ISA_3E3R1)
+#define CSKY_ISA_FLOAT_803 (CSKY_ISA_FLOAT_E1 | CSKY_ISA_FLOAT_1E3)
+  {"ck803", CSKY_ARCH_803, CSKY_ISA_803 , "-mcpu=ck803"},
+  {"ck803h", CSKY_ARCH_803, CSKY_ISA_803 , "-mcpu=ck803h"},
+  {"ck803t", CSKY_ARCH_803, CSKY_ISA_803 | CSKY_ISA_TRUST, "-mcpu=ck803t"},
+  {"ck803ht", CSKY_ARCH_803, CSKY_ISA_803 | CSKY_ISA_TRUST, "-mcpu=ck803ht"},
+  {"ck803f", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803 | CSKY_ISA_FLOAT_803, "-mcpu=ck803f"},
+  {"ck803fh", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803 | CSKY_ISA_FLOAT_803, "-mcpu=ck803fh"},
+  {"ck803e", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803 | CSKYV2_ISA_DSP, "-mcpu=ck803e"},
+  {"ck803eh", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803 | CSKYV2_ISA_DSP, "-mcpu=ck803eh"},
+  {"ck803et", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803 | CSKYV2_ISA_DSP | CSKY_ISA_TRUST, "-mcpu=ck803et"},
+  {"ck803eht", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803 | CSKYV2_ISA_DSP | CSKY_ISA_TRUST, "-mcpu=ck803eht"},
+  {"ck803ef", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_803, "-mcpu=ck803ef"},
+  {"ck803efh", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_803, "-mcpu=ck803efh"},
+  {"ck803ft", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803 | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803ft"},
+  {"ck803eft", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803eft"},
+  {"ck803efht", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803efht"},
+  {"ck803r1", CSKY_ARCH_803, CSKY_ISA_803R1 , "-mcpu=ck803r1"},
+  {"ck803hr1", CSKY_ARCH_803, CSKY_ISA_803R1 , "-mcpu=ck803hr1"},
+  {"ck803tr1", CSKY_ARCH_803, CSKY_ISA_803R1 | CSKY_ISA_TRUST, "-mcpu=ck803tr1"},
+  {"ck803htr1", CSKY_ARCH_803, CSKY_ISA_803R1 | CSKY_ISA_TRUST, "-mcpu=ck803htr1"},
+  {"ck803fr1", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_FLOAT_803, "-mcpu=ck803fr1"},
+  {"ck803fhr1", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_FLOAT_803, "-mcpu=ck803fhr1"},
+  {"ck803er1", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE, "-mcpu=ck803er1"},
+  {"ck803ehr1", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE, "-mcpu=ck803ehr1"},
+  {"ck803etr1", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_TRUST, "-mcpu=ck803etr1"},
+  {"ck803ehtr1", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_TRUST, "-mcpu=ck803ehtr1"},
+  {"ck803efr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803, "-mcpu=ck803efr1"},
+  {"ck803efhr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803, "-mcpu=ck803efhr1"},
+  {"ck803ftr1", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803ftr1"},
+  {"ck803eftr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803eftr1"},
+  {"ck803ehftr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803efhtr1"},
 
-  /* CK803S series.  */
-#define CSKY_ISA_803S   (CSKY_ISA_803 | CSKYV2_ISA_3E4 | CSKY_ISA_MP)
-#define CSKY_ISA_FLOAT_803S (CSKY_ISA_DSP_FLOAT | CSKY_ISA_DSP_FLOAT_1E2 | CSKY_ISA_FLOAT_E1 | CSKY_ISA_FLOAT_1E3)
-  {"ck803s", CSKY_ARCH_803S, CSKY_ISA_803S , "-mcpu=ck803s"},
-  {"ck803se", CSKY_ARCH_803S | CSKY_ARCH_DSP, CSKY_ISA_803S | CSKYV2_ISA_DSP, "-mcpu=ck803se"},
-  {"ck803sj", CSKY_ARCH_803S | CSKY_ARCH_JAVA, CSKY_ISA_803S | CSKY_ISA_JAVA, "-mcpu=ck803sj"},
-  {"ck803sf", CSKY_ARCH_803S | CSKY_ARCH_FLOAT, CSKY_ISA_803S | CSKY_ISA_FLOAT_803S, "-mcpu=ck803sf"},
-  {"ck803sef", CSKY_ARCH_803S | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803S | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_803S, "-mcpu=ck803sef"},
+  {"ck803s", CSKY_ARCH_803, CSKY_ISA_803R1 , "-mcpu=ck803s"},
+  {"ck803se", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R1 | CSKYV2_ISA_DSP, "-mcpu=ck803se"},
+  {"ck803sj", CSKY_ARCH_803 | CSKY_ARCH_JAVA, CSKY_ISA_803R1 | CSKY_ISA_JAVA, "-mcpu=ck803sj"},
+  {"ck803sf", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_FLOAT_803, "-mcpu=ck803sf"},
+  {"ck803sef", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_803, "-mcpu=ck803sef"},
+  {"ck803st", CSKY_ARCH_803, CSKY_ISA_803R1 | CSKY_ISA_TRUST, "-mcpu=ck803st"},
 
   /* CK807 series.  */
-#define CSKY_ISA_807    (CSKY_ISA_803S | CSKYV2_ISA_4E7 | CSKY_ISA_DSP | CSKY_ISA_MP_1E2 | CSKY_ISA_CACHE)
-#define CSKY_ISA_FLOAT_807 (CSKY_ISA_FLOAT_803S | CSKY_ISA_FLOAT_3E4 | CSKY_ISA_FLOAT_1E2)
-  {"ck807", CSKY_ARCH_807, CSKY_ISA_807 , "-mcpu=ck807"},
-  {"ck807e", CSKY_ARCH_807 | CSKY_ARCH_DSP, CSKY_ISA_807 | CSKYV2_ISA_DSP, "-mcpu=ck807e"},
-  {"ck807f", CSKY_ARCH_807 | CSKY_ARCH_FLOAT , CSKY_ISA_807 | CSKY_ISA_FLOAT_807, "-mcpu=ck807f"},
-  {"ck807ef", CSKY_ARCH_807 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT , CSKY_ISA_807 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_807, "-mcpu=ck807ef"},
+#define CSKY_ISA_807    (CSKY_ISA_803 | CSKYV2_ISA_3E7 | CSKY_ISA_DSP | CSKY_ISA_MP_1E2 | CSKY_ISA_CACHE)
+#define CSKY_ISA_FLOAT_807 (CSKY_ISA_FLOAT_803 | CSKY_ISA_FLOAT_3E4 | CSKY_ISA_FLOAT_1E2)
+  {"ck807e", CSKY_ARCH_807_BASE, CSKY_ISA_807 | CSKYV2_ISA_DSP, "-mcpu=ck807e"},
+  {"ck807ef", CSKY_ARCH_807_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_807 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_807, "-mcpu=ck807ef"},
+  {"ck807", CSKY_ARCH_807_BASE, CSKY_ISA_807 | CSKYV2_ISA_DSP, "-mcpu=ck807"},
+  {"ck807f", CSKY_ARCH_807_BASE | CSKY_ARCH_FLOAT , CSKY_ISA_807 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_807, "-mcpu=ck807f"},
 
   /* CK810 series.  */
 #define CSKY_ISA_810    (CSKY_ISA_807 | CSKYV2_ISA_7E10)
-#define CSKY_ISA_FLOAT_810 (CSKY_ISA_DSP_FLOAT | CSKY_ISA_DSP_FLOAT_1E2 | CSKY_ISA_FLOAT_E1 | CSKY_ISA_FLOAT_1E2)
-  {"ck810", CSKY_ARCH_810, CSKY_ISA_810, "-mcpu=ck810"},
-  {"ck810e", CSKY_ARCH_810 | CSKY_ARCH_DSP, CSKY_ISA_810 | CSKYV2_ISA_DSP, "-mcpu=ck810e"},
-  {"ck810f", CSKY_ARCH_810 | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKY_ISA_FLOAT_810, "-mcpu=ck810f"},
-  {"ck810ef", CSKY_ARCH_810 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_810, "-mcpu=ck810ef"},
-  {"ck810j", CSKY_ARCH_810 | CSKY_ARCH_JAVA, CSKY_ISA_810 | CSKY_ISA_JAVA, "-mcpu=ck810j"},
+#define CSKY_ISA_FLOAT_810 (CSKY_ISA_FLOAT_E1 | CSKY_ISA_FLOAT_1E2)
+  {"ck810e", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP, "-mcpu=ck810e"},
+  {"ck810et", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_TRUST, "-mcpu=ck810et"},
+  {"ck810ef", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_810, "-mcpu=ck810ef"},
+  {"ck810eft", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_810 | CSKY_ISA_TRUST, "-mcpu=ck810eft"},
+  {"ck810", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP, "-mcpu=ck810"},
+  {"ck810v", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_VDSP, "-mcpu=ck810v"},
+  {"ck810f", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_810, "-mcpu=ck810f"},
+  {"ck810t", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_TRUST, "-mcpu=ck810t"},
+  {"ck810tv", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_TRUST, "-mcpu=ck810tv"},
+  {"ck810ft", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_VDSP | CSKY_ISA_FLOAT_810 | CSKY_ISA_TRUST, "-mcpu=ck810ft"},
+  {"ck810ftv", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_VDSP | CSKY_ISA_FLOAT_810 | CSKY_ISA_TRUST, "-mcpu=ck810ftv"},
 
   {NULL, 0, 0, NULL}
 };
@@ -803,6 +869,7 @@ static void csky_show_info(int err, int idx, void *arg1, void *arg2)
   switch (err)
     {
       case ERROR_REG_LIST:
+      case ERROR_OPCODE_PSRBIT:
       case ERROR_OPCODE_ILLEGAL:
       case ERROR_JMPIX_OVER_RANGE:
       case ERROR_MISSING_COMMA:
@@ -851,6 +918,10 @@ static void csky_show_info(int err, int idx, void *arg1, void *arg2)
           break;
         }
       case ERROR_REG_OVER_RANGE:
+        {
+          as_bad (err_infos[err].fmt, idx, (long) arg1);
+          break;
+        }
       case ERROR_802J_REG_OVER_RANGE:
       case ERROR_REG_FORMAT:
         {
@@ -863,12 +934,6 @@ static void csky_show_info(int err, int idx, void *arg1, void *arg2)
           as_bad ((char *)arg1, NULL);
           break;
         }
-      case WARNING_BMASKI_TO_MOVI:
-        {
-          /* Add NULL to fix warnings.  */
-          as_warn (err_infos[err].fmt, NULL);
-          break;
-        }
       case WARNING_IDLY:
           as_warn (err_infos[err].fmt, (long)arg1);
       case WARNING_OPTIONS:
@@ -879,7 +944,7 @@ static void csky_show_info(int err, int idx, void *arg1, void *arg2)
 }
 
 static void
-csky_branch_report_error(char* file, unsigned int line,
+csky_branch_report_error(const char* file, unsigned int line,
                          symbolS* sy, offsetT val)
 {
   as_bad_where (file ? file : _("unknown"),
@@ -929,6 +994,8 @@ parse_cpu (const char *str)
       if (memcmp (dup_str, csky_cpus[i].name, strlen(dup_str)) == 0)
         {
           mach_flag |= csky_cpus[i]._mach_flag;
+          isa_flag = csky_cpus[i]._isa_flag;
+          other_flag |= (csky_cpus[i]._mach_flag & ~CSKY_ARCH_MASK);
           return 0;
         }
     }
@@ -951,7 +1018,6 @@ parse_arch (const char *str)
         }
     }
   return 1;
-
 }
 
 #ifdef OBJ_ELF
@@ -1089,14 +1155,39 @@ md_show_usage (FILE * fp)
   int i = 0;
   for (i = 0; csky_opts[i].name != NULL; i++)
     {
-      /* Add NULL to fix warnings.  */
-      fprintf (fp, csky_opts[i].help, NULL);
+      if (NULL != csky_opts[i].help)
+        fprintf (fp, "%s", csky_opts[i].help);
     }
   for (i = 0; csky_long_opts[i].name != NULL; i++)
     {
-      /* Add NULL to fix warnings.  */
-      fprintf (fp, csky_long_opts[i].help, NULL);
+      if (NULL != csky_long_opts[i].help)
+        fprintf (fp, "%s", csky_long_opts[i].help);
     }
+
+  /* Arch Supports.  */
+  fprintf (fp, "-march=[] \t\t\tsupported arch:\n\t\t\t\t");
+  for (i = 0; csky_archs[i].name != NULL; i++)
+    {
+      if (csky_archs[i+1].name != NULL)
+        fprintf (fp, "%s/", csky_archs[i].name);
+      else
+        fprintf (fp, "%s\n", csky_archs[i].name);
+      if (i % 10 == 0 && i != 0)
+        fprintf (fp, "\n\t\t\t\t");
+    }
+
+  /* CPU supports.  */
+  fprintf (fp, "-mcpu=[] \t\t\tsupported cpus:\n\t\t\t\t");
+  for (i = 0; csky_cpus[i].name != NULL; i++)
+    {
+      if (csky_cpus[i+1].name != NULL)
+        fprintf (fp, "%s/", csky_cpus[i].name);
+      else
+        fprintf (fp, "%s", csky_cpus[i].name);
+      if (i % 10 == 0 && i != 0)
+        fprintf (fp, "\n\t\t\t\t");
+    }
+
 }
 
 /* Add literal pool functions here.  */
@@ -1133,7 +1224,8 @@ make_mapping_symbol (map_state state, valueT value, fragS *frag)
   symbol_get_bfdsym (symbolP)->flags |= type | BSF_LOCAL;
 }
 
-void mapping_state (map_state state )
+static void
+mapping_state (map_state state )
 {
   map_state current_state = seg_info (now_seg)->tc_segment_info_data.current_state;
  /*   const char * sym;*/
@@ -1485,7 +1577,7 @@ parse_exp (char * s, expressionS * e)
   lex_got(&insn_reloc, NULL);
 
   if (e->X_op == O_absent)
-      errs.err_num = ERROR_MISSING_OPERAND;
+    SET_ERROR_NUMBER(ERROR_MISSING_OPERAND, NULL);
 
   new = input_line_pointer;
   input_line_pointer = save;
@@ -1494,14 +1586,10 @@ parse_exp (char * s, expressionS * e)
 }
 
 static char *
-parse_fexp(s, e, isdouble, dbnum)
-    char * s;
-    expressionS * e;
-    unsigned char isdouble;
-    uint64_t * dbnum;
+parse_fexp( char * s, expressionS * e, unsigned char isdouble, uint64_t * dbnum)
 {
   int length;                 /* Number of chars in an object.  */
-  register char *err = NULL;  /* Error from scanning floating literal.  */
+  register char const *err = NULL;  /* Error from scanning floating literal.  */
   char temp[8];
 
   /* input_line_pointer->1st char of a flonum (we hope!).  */
@@ -1590,7 +1678,7 @@ parse_rt (char *s,
       if (*s == ']')
         s++;
       else
-        errs.err_num = ERROR_MISSING_RSQUARE_BRACKETS;
+        SET_ERROR_NUMBER(ERROR_MISSING_RSQUARE_BRACKETS, NULL);
 
       if (ep)
        *ep = e;
@@ -1675,29 +1763,46 @@ parse_rtf (char *s, int ispcrel, expressionS *ep)
 void
 md_begin (void)
 {
-  unsigned int bfd_mach_flag;
+  unsigned int bfd_mach_flag = 0;
   struct _csky_opcode const *opcode;
   struct _csky_macro_info const *macro;
   struct _csky_arch const *p_arch;
   struct _csky_cpu const *p_cpu;
+  unsigned int flags = other_flag;
+
+  if (dsp_flag)
+    flags |= CSKY_ARCH_DSP;
 
   if (mach_flag != 0)
     {
       if (((mach_flag & CSKY_ARCH_MASK) != arch_flag) && arch_flag != 0)
         as_warn("-mcpu conflict with -march option, actually use -mcpu");
-      if (((mach_flag & ~CSKY_ARCH_MASK) != other_flag) && other_flag != 0)
+      if (((mach_flag & ~CSKY_ARCH_MASK) != flags) && flags != 0)
         as_warn("-mcpu conflict with other model parameters, actually use -mcpu");
     }
   else if (arch_flag != 0)
     {
-      mach_flag |= arch_flag | other_flag;
+      mach_flag |= arch_flag | flags;
     }
   else
     {
-#if _CSKY_ABI==1
-      mach_flag |= CSKY_ARCH_610 | other_flag;
+#ifdef TARGET_WITH_CPU
+      int i = 0;
+      for (; csky_cpus[i].name != NULL; i++)
+        {
+          if (memcmp (TARGET_WITH_CPU, csky_cpus[i].name, strlen(TARGET_WITH_CPU)) == 0)
+            {
+              mach_flag |= csky_cpus[i]._mach_flag;
+              isa_flag = csky_cpus[i]._isa_flag;
+              break;
+            }
+        }
 #else
-      mach_flag |= CSKY_ARCH_810 | other_flag;
+#if _CSKY_ABI==1
+      mach_flag |= CSKY_ARCH_610 | flags;
+#else
+      mach_flag |= CSKY_ARCH_810_BASE | flags;
+#endif
 #endif
     }
 
@@ -1727,7 +1832,7 @@ md_begin (void)
   /* Find bfd_mach_flag, it will set to bfd backend data.  */
   for (p_arch = csky_archs; p_arch->_arch_flag != 0; p_arch++)
     {
-      if ((mach_flag & CSKY_ARCH_MASK) == p_arch->_arch_flag)
+      if ((mach_flag & CSKY_ARCH_MASK) == (p_arch->_arch_flag & CSKY_ARCH_MASK))
         {
           bfd_mach_flag =  p_arch->_bfd_mach_flag;
           break;
@@ -1738,9 +1843,29 @@ md_begin (void)
     {
       if ((mach_flag & CPU_ARCH_MASK)== p_cpu->_mach_flag)
         {
-          isa_flag = p_cpu->_isa_flag;
+          isa_flag |= p_cpu->_isa_flag;
           break;
         }
+    }
+
+  /* Check if -mdsp and -medsp is conflict. If cpu is ck803, we will use enhance
+     dsp instruction. Otherwise, we will use normal dsp.  */
+  if (dsp_flag)
+    {
+      if (((CSKY_ARCH_MASK & mach_flag) == CSKY_ARCH_803))
+        {
+          /* In 803, dspv1 is conflict with dspv2. We keep dspv2.  */
+          if ((dsp_flag & CSKY_DSP_FLAG_V1) && (dsp_flag & CSKY_DSP_FLAG_V2))
+            as_warn ("Option -mdsp is conflit with -medsp, only enable -medsp here");
+          isa_flag &= ~(CSKY_ISA_MAC_DSP | CSKY_ISA_DSP);
+          isa_flag |= CSKY_ISA_DSP_ENHANCE;
+        }
+      else
+        {
+          isa_flag &= ~CSKY_ISA_DSP_ENHANCE;
+          as_warn ("-medsp optoin is only supported in arch ck803s, -medsp will be ignored");
+        }
+      ;
     }
 
   if (do_use_branchstub == -1)
@@ -1808,7 +1933,7 @@ md_begin (void)
     }
   if (do_intr_stack == -1)
     {
-      /* control interrupt stack module, 801&802&803&803S default open,
+      /* control interrupt stack module, 801&802&803 default open,
          807&810, default close.  */
       if ((mach_flag & CSKY_ARCH_MASK) == CSKY_ARCH_807
           || (mach_flag & CSKY_ARCH_MASK) == CSKY_ARCH_810)
@@ -1878,42 +2003,44 @@ md_begin (void)
 static bfd_boolean
 parse_type_ctrlreg (char** oper)
 {
-  const char **regs;
-  int i;
-  int len;
-  regs = csky_ctrl_reg;
-  for (i = 0; i < (int)(sizeof (csky_ctrl_reg) / sizeof (char *)); i++)
+  int i = -1;
+  int len = 0;
+
+  if (TOLOWER(*(*oper + 0)) == 'c'
+      && TOLOWER(*(*oper + 1)) == 'r'
+      && ISDIGIT(*(*oper + 2)))
     {
-      len = strlen (regs[i]);
-      if (memcmp (*oper, regs[i], len) == 0
-          && !ISALNUM(*(*oper + len)))
+      /* The control registers are named crxx.  */
+      i = *(*oper+2) - 0x30;
+      i = ISDIGIT(*(*oper + 3)) ? (*(*oper + 3) - 0x30) + 10 * i : i;
+      len = ISDIGIT(*(*oper + 3)) ? 4 : 3;
+      *oper += len;
+    }
+  else if (!(TOLOWER(*(*oper + 0)) == 'c'
+           && TOLOWER(*(*oper + 1)) == 'r'))
+    {
+      /* The control registers are aliased.  */
+      struct csky_reg *reg = &csky_ctrl_regs[0];
+      while (reg->name)
         {
-          *oper += len;
-          csky_insn.opcode_end = *oper;
-          break;
+          if (memcmp (*oper, reg->name, strlen (reg->name)) == 0
+              && (!reg->flag || (isa_flag & reg->flag)))
+            {
+              i = reg->index;
+              len = strlen (reg->name);
+              *oper += len;
+              break;
+            }
+          reg++;
         }
     }
 
-  if (i == sizeof (csky_ctrl_reg) / sizeof (char *))
-    {
-      regs = csky_ctrl_reg_alias;
-      for (i = 0; i < (int)(sizeof (csky_ctrl_reg_alias) / sizeof (char *)); i++)
-        {
-          len = strlen (regs[i]);
-          if (memcmp (*oper, regs[i], len) == 0)
-            {
-              *oper += len;
-              csky_insn.opcode_end = *oper;
-              break;
-            }
-        }
-    }
   if (IS_CSKY_V2 (mach_flag))
     {
       char *s = *oper;
       int crx;
       int sel;
-      if (i != sizeof (csky_ctrl_reg) / sizeof (char *))
+      if (i != -1)
         {
           crx = i;
           sel = 0;
@@ -1948,15 +2075,14 @@ parse_type_ctrlreg (char** oper)
                     }
                   else
                     {
-                      errs.err_num = ERROR_REG_OVER_RANGE;
-                      errs.arg1 = (void *) "control";
+                      SET_ERROR_NUMBER(ERROR_REG_OVER_RANGE, (void *) "control");
                       return FALSE;
                     }
                   if (*s == ',')
                     s++;
                   else
                     {
-                      errs.err_num = ERROR_CREG_ILLEGAL;
+                      SET_ERROR_NUMBER(ERROR_CREG_ILLEGAL, NULL);
                       return FALSE;
                     }
                   char *pS = s;
@@ -1967,7 +2093,7 @@ parse_type_ctrlreg (char** oper)
                   else
                     {
                       /* Error. Missing '>'.  */
-                      errs.err_num = ERROR_MISSING_RANGLE_BRACKETS;
+                      SET_ERROR_NUMBER(ERROR_MISSING_RANGLE_BRACKETS, NULL);
                       return FALSE;
                     }
                   expressionS e;
@@ -1985,12 +2111,15 @@ parse_type_ctrlreg (char** oper)
               else
                 {
                   /* Error. Missing '<'.  */
-                  errs.err_num = ERROR_MISSING_LANGLE_BRACKETS;
+                  SET_ERROR_NUMBER(ERROR_MISSING_LANGLE_BRACKETS, NULL);
                   return FALSE;
                 }
             }
           else
-            return FALSE;
+            {
+              SET_ERROR_NUMBER(ERROR_CREG_ILLEGAL, NULL);
+              return FALSE;
+            }
         }
         i = (sel << 5) | crx;
     }
@@ -2084,15 +2213,15 @@ is_reg_sp (char **oper)
 static int
 csky_get_reg_val (char *str, int *len)
 {
-  int reg = 0;
-  if (TOLOWER(str[0]) == 'r')
+  long reg = 0;
+  if (TOLOWER(str[0]) == 'r' && ISDIGIT(str[1]))
     {
-      if (ISALNUM (str[1]) && ISALNUM (str[2]))
+      if (ISDIGIT(str[1]) && ISDIGIT(str[2]))
         {
           reg = (str[1] - '0') * 10 + str[2] - '0';
           *len = 3;
         }
-      else if (ISALNUM (str[1]))
+      else if (ISDIGIT (str[1]))
         {
           reg = str[1] - '0';
           *len = 2;
@@ -2101,7 +2230,7 @@ csky_get_reg_val (char *str, int *len)
         return -1;
     }
   else if (TOLOWER (str[0]) == 's' && TOLOWER (str[1]) == 'p'
-           && !ISALNUM (str[2]))
+           && !ISDIGIT (str[2]))
     {
       /* sp.  */
       if (IS_CSKY_V1 (mach_flag))
@@ -2111,7 +2240,7 @@ csky_get_reg_val (char *str, int *len)
       *len = 2;
     }
   else if (TOLOWER (str[0]) == 'g' && TOLOWER (str[1]) == 'b'
-           && !ISALNUM (str[2]))
+           && !ISDIGIT (str[2]))
     {
       /* gb.  */
       if (IS_CSKY_V1 (mach_flag))
@@ -2121,14 +2250,14 @@ csky_get_reg_val (char *str, int *len)
       *len = 2;
     }
   else if (TOLOWER (str[0]) == 'l' && TOLOWER (str[1]) == 'r'
-           && !ISALNUM (str[2]))
+           && !ISDIGIT (str[2]))
     {
       /* lr.  */
       reg = 15;
       *len = 2;
     }
   else if (TOLOWER (str[0]) == 't' && TOLOWER (str[1]) == 'l'
-           && TOLOWER (str[2]) == 's' && !ISALNUM (str[3]))
+           && TOLOWER (str[2]) == 's' && !ISDIGIT (str[3]))
     {
       /* tls.  */
       if (IS_CSKY_V2 (mach_flag))
@@ -2148,7 +2277,7 @@ csky_get_reg_val (char *str, int *len)
     }
   else if (TOLOWER (str[0]) == 'a')
     {
-      if (ISALNUM (str[1]) && !ISALNUM (str[2]))
+      if (ISDIGIT (str[1]) && !ISDIGIT (str[2]))
         {
           if (IS_CSKY_V1 (mach_flag) && (str[1] - '0') <= 5)
             /* a0 - a5.  */
@@ -2207,6 +2336,31 @@ csky_get_reg_val (char *str, int *len)
   else
     return -1;
 
+  /* Is register avaliable?  */
+  if ((mach_flag & CSKY_ARCH_MASK) == CSKY_ARCH_801)
+    {
+      /* CK801 register range is r0-r8 & r13-r15.  */
+      if ((reg > 8 && reg < 13) || reg > 15)
+        {
+          SET_ERROR_NUMBER (ERROR_REG_OVER_RANGE, (void *) reg);
+          return -1;
+        }
+    }
+  else if ((mach_flag & CSKY_ARCH_MASK) == CSKY_ARCH_802)
+    {
+      /* CK802 register range is r0-r15 & r23-r25 & r30.  */
+      if ((reg > 15 && reg < 23) || (reg > 25 && reg != 30))
+        {
+          SET_ERROR_NUMBER (ERROR_REG_OVER_RANGE, (void *) reg);
+          return -1;
+        }
+    }
+  else if (reg > 31 || reg < 0)
+    {
+      SET_ERROR_NUMBER (ERROR_REG_OVER_RANGE, (void *) reg);
+      return -1;
+    }
+
   return reg;
 }
 
@@ -2220,7 +2374,7 @@ csky_get_freg_val (char *str, int *len)
     {
       /* It is fpu register.  */
       s = &str[2];
-      while (ISALNUM(*s))
+      while (ISDIGIT(*s))
         {
           reg = reg * 10 + (*s) - '0';
           s++;
@@ -2251,15 +2405,13 @@ is_reglist_legal (char **oper)
       || (IS_CSKY_V1(mach_flag)
           && (reg1 == 0 || reg1 == 15)))
     {
-      errs.err_num = ERROR_REG_FORMAT;
-      errs.arg1 = (void *)"The first reg must not be r0/r15";
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The first reg must not be r0/r15");
       return FALSE;
     }
 
   if (**oper != '-')
     {
-      errs.err_num = ERROR_REG_FORMAT;
-      errs.arg1 = (void *)"The operand format must be rx-ry";
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The operand format must be rx-ry");
       return FALSE;
     }
   *oper += 1;
@@ -2271,16 +2423,14 @@ is_reglist_legal (char **oper)
       || (IS_CSKY_V1(mach_flag)
           && (reg1 == 15)))
     {
-      errs.err_num = ERROR_REG_FORMAT;
-      errs.arg1 = (void *)"The operand format must be r15 in C-SKY V1";
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The operand format must be r15 in C-SKY V1");
       return FALSE;
     }
   if (IS_CSKY_V2(mach_flag))
     {
       if (reg2 < reg1)
         {
-          errs.err_num = ERROR_REG_FORMAT;
-          errs.arg1 = (void *)"The operand format must be rx-ry(rx < ry)";
+          SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The operand format must be rx-ry(rx < ry)");
           return FALSE;
         }
       reg2 = reg2 - reg1;
@@ -2302,15 +2452,13 @@ is_freglist_legal (char **oper)
 
   if (reg1 == -1)
     {
-      errs.err_num = ERROR_REG_FORMAT;
-      errs.arg1 = (void *)"The fpu register format is not recognized.";
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The fpu register format is not recognized.");
       return FALSE;
     }
 
   if (**oper != '-')
     {
-      errs.err_num = ERROR_REG_FORMAT;
-      errs.arg1 = (void *)"The operand format must be vrx-vry/frx-fry.";
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The operand format must be vrx-vry/frx-fry.");
       return FALSE;
     }
   *oper += 1;
@@ -2320,14 +2468,12 @@ is_freglist_legal (char **oper)
 
   if (reg2 == -1)
     {
-      errs.err_num = ERROR_REG_FORMAT;
-      errs.arg1 = (void *)"The fpu register format is not recognized.";
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The fpu register format is not recognized.");
       return FALSE;
     }
   if (reg2 < reg1)
     {
-      errs.err_num = ERROR_REG_FORMAT;
-      errs.arg1 = (void *)"The operand format must be rx-ry(rx < ry)";
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The operand format must be rx-ry(rx < ry)");
       return FALSE;
     }
   reg2 = reg2 - reg1;
@@ -2351,7 +2497,7 @@ is_reglist_dash_comma_legal (char **oper, struct operand *oprnd)
       reg1 = csky_get_reg_val  (*oper, &len);
       if (reg1 == -1)
         {
-          errs.err_num = ERROR_REG_LIST;
+          SET_ERROR_NUMBER(ERROR_REG_LIST, NULL);
           return FALSE;
         }
       flag |= (1 << reg1);
@@ -2362,13 +2508,13 @@ is_reglist_dash_comma_legal (char **oper, struct operand *oprnd)
           reg2 = csky_get_reg_val  (*oper, &len);
           if (reg2 == -1)
             {
-              errs.err_num = ERROR_REG_LIST;
+              SET_ERROR_NUMBER(ERROR_REG_LIST, NULL);
               return FALSE;
             }
           *oper += len;
           if (reg1 > reg2)
             {
-              errs.err_num = ERROR_REG_LIST;
+              SET_ERROR_NUMBER(ERROR_REG_LIST, NULL);
               return FALSE;
             }
           while (reg2 >= reg1)
@@ -2384,7 +2530,7 @@ is_reglist_dash_comma_legal (char **oper, struct operand *oprnd)
 #define REGLIST_BITS         0x10038ff0
   if (flag & ~(REGLIST_BITS))
     {
-      errs.err_num = ERROR_REG_LIST;
+      SET_ERROR_NUMBER(ERROR_REG_LIST, NULL);
       return FALSE;
     }
   /* Check r4-r11.  */
@@ -2418,7 +2564,7 @@ is_reglist_dash_comma_legal (char **oper, struct operand *oprnd)
   if ((oprnd->mask == OPRND_MASK_0_4)
       && (list & ~OPRND_MASK_0_4))
     {
-      errs.err_num = ERROR_REG_LIST;
+      SET_ERROR_NUMBER(ERROR_REG_LIST, NULL);
       return FALSE;
     }
   csky_insn.val[csky_insn.idx++] = list;
@@ -2434,16 +2580,15 @@ is_reg_lshift_illegal (char **oper, int is_float)
   reg = csky_get_reg_val  (*oper, &len);
   if (reg == -1)
     {
-      errs.err_num = ERROR_REG_FORMAT;
-      errs.arg1 = (void *)"The register must be r0-r31.";
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The register must be r0-r31.");
       return FALSE;
     }
 
   *oper += len;
   if ((*oper)[0] != '<' || (*oper)[1] != '<')
     {
-      errs.err_num = ERROR_UNDEFINE;
-      errs.arg1 = (void *)"Operand format is error. The format is (rx, ry << n)";
+      SET_ERROR_NUMBER(ERROR_UNDEFINE, (void *)"Operand format is error. The format is (rx, ry << n)");
+      return FALSE;
     }
   *oper += 2;
 
@@ -2456,16 +2601,13 @@ is_reg_lshift_illegal (char **oper, int is_float)
       if ((e.X_add_number < 0
            || e.X_add_number > 3))
         {
-          if (errs.err_num > ERROR_IMM_OVERFLOW)
-            {
-              errs.err_num = ERROR_IMM_OVERFLOW;
-              return FALSE;
-            }
+          SET_ERROR_NUMBER(ERROR_IMM_OVERFLOW, NULL);
+          return FALSE;
         }
     }
   else
     {
-      errs.err_num = ERROR_EXP_CONSTANT;
+      SET_ERROR_NUMBER(ERROR_EXP_CONSTANT, NULL);
       return FALSE;
     }
   if (is_float)
@@ -2492,10 +2634,7 @@ is_imm_over_range (char **oper, int min, int max, int ext)
               || e.X_add_number > max))
         {
           ret = FALSE;
-          if (errs.err_num > ERROR_IMM_OVERFLOW)
-            {
-              errs.err_num = ERROR_IMM_OVERFLOW;
-            }
+          SET_ERROR_NUMBER(ERROR_IMM_OVERFLOW, NULL);
         }
       csky_insn.val[csky_insn.idx++] = e.X_add_number;
     }
@@ -2516,6 +2655,7 @@ is_oimm_over_range (char **oper, int min, int max)
       if (e.X_add_number < min || e.X_add_number > max)
         {
           ret = FALSE;
+          SET_ERROR_NUMBER(ERROR_IMM_OVERFLOW, NULL);
         }
       csky_insn.val[csky_insn.idx++] = e.X_add_number - 1;
     }
@@ -2537,16 +2677,25 @@ is_psr_bit (char **oper)
       bits = cskyv2_psr_bits;
     }
 
+  /* convert string to lower.  */
+  string_tolower (*oper);
+
   while (bits[i].name != NULL)
     {
-      if (memcmp (*oper, bits[i].name, 2) == 0)
+      if (bits[i].isa && !(bits[i].isa & isa_flag))
         {
-          *oper += 2;
+          i++;
+          continue;
+        }
+      if (memcmp (*oper, bits[i].name, strlen (bits[i].name)) == 0)
+        {
+          *oper += strlen (bits[i].name);
           csky_insn.val[csky_insn.idx] |= bits[i].value;
           return TRUE;
         }
       i++;
     }
+  SET_ERROR_NUMBER(ERROR_OPCODE_PSRBIT, NULL);
   return FALSE;
 }
 
@@ -2557,14 +2706,14 @@ parse_type_cpidx (char** oper)
   int idx;
   if (s[0] == 'c' && s[1] == 'p')
     {
-      if ( ISALNUM (s[2])
-          && ISALNUM (s[3])
-          && ! ISALNUM (s[4]))
+      if ( ISDIGIT (s[2])
+          && ISDIGIT (s[3])
+          && ! ISDIGIT (s[4]))
         {
           idx = (s[2] - '0') * 10 + s[3] - '0';
           *oper += 4;
         }
-      else if (ISALNUM (s[2]) && !ISALNUM (s[3]))
+      else if (ISDIGIT (s[2]) && !ISDIGIT (s[3]))
         {
           idx = s[2] - '0';
           *oper += 3;
@@ -2602,15 +2751,14 @@ parse_type_cpreg (char** oper)
     {
       len = strlen (regs[i]);
       if (memcmp (*oper, regs[i], len) == 0
-          && !ISALNUM(*(*oper + len)))
+          && !ISDIGIT(*(*oper + len)))
         {
           *oper += len;
           csky_insn.val[csky_insn.idx++] = i;
           return TRUE;
         }
     }
-  errs.err_num = ERROR_CPREG_ILLEGAL;
-  errs.arg1 = *oper;
+  SET_ERROR_NUMBER(ERROR_CPREG_ILLEGAL, *oper);
   return FALSE;
 }
 
@@ -2625,15 +2773,14 @@ parse_type_cpcreg (char** oper)
     {
       len = strlen (regs[i]);
       if (memcmp (*oper, regs[i], len) == 0
-          && !ISALNUM(*(*oper + len)))
+          && !ISDIGIT(*(*oper + len)))
         {
           *oper += len;
           csky_insn.val[csky_insn.idx++] = i;
           return TRUE;
         }
     }
-  errs.err_num = ERROR_CPREG_ILLEGAL;
-  errs.arg1 = *oper;
+  SET_ERROR_NUMBER(ERROR_CPREG_ILLEGAL, *oper);
   return FALSE;
 }
 
@@ -2645,30 +2792,15 @@ parse_type_areg (char** oper)
   i = csky_get_reg_val (*oper, &len);
   if (i == -1)
     {
-      if (errs.err_num > ERROR_REG_FORMAT)
-        {
-          errs.err_num = ERROR_REG_FORMAT;
-          errs.arg1 = (char *) *oper;
-        }
+      SET_ERROR_NUMBER (ERROR_GREG_ILLEGAL, NULL);
       return FALSE;
-    }
-  /* It check register range for ck802j.  */
-  if ((mach_flag & CSKY_ARCH_MASK) ==  CSKY_ARCH_802
-      && mach_flag & CSKY_ISA_JAVA)
-    {
-      if (i > 15
-          && !(i == 30 || i == 23 || i == 24 || i == 25))
-        {
-          errs.err_num = ERROR_802J_REG_OVER_RANGE;
-          errs.arg1 = (char *) csky_general_reg [i];
-          return FALSE;
-        }
     }
   *oper += len;
   csky_insn.val[csky_insn.idx++] = i;
 
   return TRUE;
 }
+
 static bfd_boolean
 parse_type_freg (char** oper, int even)
 {
@@ -2677,15 +2809,14 @@ parse_type_freg (char** oper, int even)
   reg = csky_get_freg_val (*oper, &len);
   if (reg == -1)
     {
-      errs.err_num = ERROR_REG_FORMAT;
-      errs.arg1 = (void *)"The fpu register format is not recognized.";
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The fpu register format is not recognized.");
       return FALSE;
     }
   *oper += len;
   csky_insn.opcode_end = *oper;
   if (even && reg & 0x1)
     {
-      errs.err_num = ERROR_EXP_EVEN_FREG;
+      SET_ERROR_NUMBER(ERROR_EXP_EVEN_FREG, NULL);
       return FALSE;
     }
   csky_insn.val[csky_insn.idx++] = reg;
@@ -2693,50 +2824,29 @@ parse_type_freg (char** oper, int even)
 }
 
 static bfd_boolean
-parse_ldst_imm (char **oper, struct _csky_opcode_info *op, struct operand *oprnd)
+parse_ldst_imm (char **oper, struct _csky_opcode_info *op ATTRIBUTE_UNUSED, struct operand *oprnd)
 {
   unsigned int mask = oprnd->mask;
   int max = 1;
   int shift = 0;
 
-#define IS_32_OPCODE(opcode)      (opcode & 0xc0000000)
-#define V1_GET_LDST_SHIFT(opcode, shift)                 \
-      shift = v1_shift_tab[((opcode >> 13) & 0x3 )]
-#define V2_GET_LDST_SHIFT(opcode, shift)            \
-    {                                               \
-      if (IS_32_OPCODE (opcode))                    \
-        shift = ((opcode & 0x3000) >> 12);          \
-      else                                          \
-        shift = ((opcode & 0x1800) >> 11);          \
-      shift = (shift > 2 ? 2 : shift);              \
-    }
+  shift = oprnd->shift;
 
-  if (**oper == ')' || is_end_of_line[**oper])
+  while (mask)
     {
-      /* the second value is (rx).  */
-      csky_insn.val[csky_insn.idx++] = 0;
+      if (mask & 1)
+        {
+          max <<= 1;
+        }
+      mask >>= 1;
+    }
+  max = max << shift;
 
+  if (**oper == '\0' || **oper == ')')
+    {
+      csky_insn.val[csky_insn.idx++] = 0;
       return TRUE;
     }
-  if (IS_CSKY_V1 (mach_flag))
-    {
-      static int v1_shift_tab[] = {2, 0, 1};
-      V1_GET_LDST_SHIFT(op->opcode, shift);
-    }
-  else
-    {
-      V2_GET_LDST_SHIFT (op->opcode, shift);
-    }
-
-  while (mask)
-    {
-      if (mask & 1)
-        {
-          max <<= 1;
-        }
-      mask >>= 1;
-    }
-  max = max << shift;
 
   expressionS e;
   *oper = parse_exp (*oper, &e);
@@ -2748,88 +2858,13 @@ parse_ldst_imm (char **oper, struct _csky_opcode_info *op, struct operand *oprnd
   else if (e.X_add_number < 0 || e.X_add_number >= max)
     {
       /* Out of range.  */
-      errs.err_num = ERROR_REG_OVER_RANGE;
+      SET_ERROR_NUMBER(ERROR_IMM_OVERFLOW, NULL);
       return FALSE;
     }
   if ((e.X_add_number % (1 << shift)) != 0)
     {
       /* Not aligned.  */
-      errs.err_num = ERROR_OFFSET_UNALIGNED;
-      errs.arg1 = (void *)((unsigned long)1 << shift);
-      return FALSE;
-    }
-
-  csky_insn.val[csky_insn.idx++] = e.X_add_number >> shift;
-
-  return TRUE;
-
-}
-
-static bfd_boolean
-parse_fldst_imm (char **oper, struct _csky_opcode_info *op, struct operand *oprnd)
-{
-  unsigned int mask = oprnd->mask;
-  int max = 1;
-  int shift = 0;
-
-  /* vldq/vstq, shift is 4 bits.
-     flds/fsts/fldd/fstdd, shift is 2 bits.  */
-#define V2_GET_FLDST_SHIFT(opcode, shift)             \
-    switch (opcode & 0x0f00ff00)                      \
-      {                                               \
-        case 0x08002400:                              \
-        case 0x08002500:                              \
-        case 0x08002600:                              \
-        case 0x08002c00:                              \
-        case 0x08002d00:                              \
-        case 0x08002e00:                              \
-            shift = 4;                                \
-            break;                                    \
-        case 0x04002000:                              \
-        case 0x04002100:                              \
-        case 0x04002400:                              \
-        case 0x04002500:                              \
-            shift = 2;                                \
-            break;                                    \
-        default:                                      \
-            shift = 3;                                \
-            break;                                    \
-      }
-
-  if (IS_CSKY_V1 (mach_flag))
-    ;
-  else
-    {
-      V2_GET_FLDST_SHIFT (op->opcode, shift);
-    }
-
-  while (mask)
-    {
-      if (mask & 1)
-        {
-          max <<= 1;
-        }
-      mask >>= 1;
-    }
-  max = max << shift;
-  expressionS e;
-  *oper = parse_exp (*oper, &e);
-  if (e.X_op != O_constant)
-    {
-      /* Not a constant.  */
-      return FALSE;
-    }
-  else if (e.X_add_number < 0 || e.X_add_number >= max)
-    {
-      /* Out of range.  */
-      errs.err_num = ERROR_REG_OVER_RANGE;
-      return FALSE;
-    }
-  if ((e.X_add_number % (1 << shift)) != 0)
-    {
-      /* Not aligned.  */
-      errs.err_num = ERROR_OFFSET_UNALIGNED;
-      errs.arg1 = (void *)((unsigned long)1 << shift);
+      SET_ERROR_NUMBER(ERROR_OFFSET_UNALIGNED, (void *)((unsigned long)1 << shift));
       return FALSE;
     }
 
@@ -2921,9 +2956,9 @@ parse_opcode (char *str)
     }
 
   /* Is csky force 32 or 16 instruction?  */
-  if ((IS_CSKY_V2 (mach_flag)) && (has_suffix == FALSE))
+  if ((has_suffix == FALSE))
     {
-      if (IS_OPCODE32F (opcode_end))
+      if ((IS_CSKY_V2 (mach_flag)) && IS_OPCODE32F (opcode_end))
         {
           csky_insn.flag_force = INSN_OPCODE32F;
           nlen -= 2;
@@ -2966,7 +3001,7 @@ static bfd_boolean
 get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *oprnd)
 {
   struct soperand *soprnd = NULL;
-  if (oprnd->mask == (int)HAS_SUB_OPERAND)
+  if (oprnd->mask == HAS_SUB_OPERAND)
     {
       /* It has sub operand, it must be like:
          (oprnd1, oprnd2)
@@ -2977,6 +3012,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
       char lc;
       char rc;
       char *s = *oper;
+      int  bracket_cnt = 0;
       if (oprnd->type == OPRND_TYPE_BRACKET)
         {
           lc = '(';
@@ -2989,24 +3025,35 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
         }
 
       if (**oper == lc)
-        *oper += 1;
+        {
+          *oper += 1;
+          s += 1;
+        }
       else
         {
-          errs.err_num = oprnd->type == OPRND_TYPE_BRACKET ?
-            ERROR_MISSING_LBRACHKET : ERROR_MISSING_LANGLE_BRACKETS;
+          SET_ERROR_NUMBER ((oprnd->type == OPRND_TYPE_BRACKET ?
+            ERROR_MISSING_LBRACHKET : ERROR_MISSING_LANGLE_BRACKETS), NULL);
           return FALSE;
         }
 
       /* If the oprnd2 is an immediate, it can not be parsed
          that end with ')'/'>'.  Modify ')'/'>' to '\0'.  */
-      while (*s != rc && (*s != '\n' && *s != '\0'))
-        s++;
+      while ((*s != rc || bracket_cnt != 0) && (*s != '\n' && *s != '\0'))
+        {
+          if (*s == lc)
+            bracket_cnt++;
+          else if (*s == rc)
+            bracket_cnt--;
+
+          s++;
+        }
+
       if (*s == rc)
         *s = '\0';
       else
         {
-          errs.err_num = oprnd->type == OPRND_TYPE_BRACKET ?
-            ERROR_MISSING_RBRACHKET : ERROR_MISSING_RANGLE_BRACKETS;
+          SET_ERROR_NUMBER ((oprnd->type == OPRND_TYPE_BRACKET ?
+            ERROR_MISSING_RBRACHKET : ERROR_MISSING_RANGLE_BRACKETS), NULL);
           return FALSE;
         }
 
@@ -3046,6 +3093,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
         return parse_type_areg (oper);
         break;
       case OPRND_TYPE_FREG:
+      case OPRND_TYPE_VREG:
         return parse_type_freg (oper, 0);
         break;
       case OPRND_TYPE_FEREG:
@@ -3064,13 +3112,15 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
       case OPRND_TYPE_GREG0_15:
         {
           int len;
-          int reg;
+          long reg;
           reg = csky_get_reg_val (*oper, &len);
           if (reg == -1
               || IS_REG_OVER_RANGE(reg, oprnd->type))
             {
-              errs.err_num = ERROR_REG_OVER_RANGE;
-              errs.arg1 = (void *) csky_general_reg[reg];
+              if (reg == -1)
+                SET_ERROR_NUMBER (ERROR_GREG_ILLEGAL, NULL);
+              else
+                SET_ERROR_NUMBER (ERROR_REG_OVER_RANGE, (void *) reg);
               return FALSE;
             }
           *oper += len;
@@ -3081,15 +3131,14 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
       case OPRND_TYPE_REGnsplr:
         {
           int len;
-          int reg;
+          long reg;
           reg = csky_get_reg_val (*oper, &len);
 
           if (reg == -1
               || (IS_CSKY_V1 (mach_flag)
                   && (reg == V1_REG_SP || reg == V1_REG_LR)))
             {
-              errs.err_num = ERROR_REG_OVER_RANGE;
-              errs.arg1 = (void *) csky_general_reg[reg];
+              SET_ERROR_NUMBER (ERROR_REG_OVER_RANGE, (void *) reg);
               return FALSE;
             }
           csky_insn.val[csky_insn.idx++] = reg;
@@ -3123,13 +3172,15 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
             csky_insn.val[csky_insn.idx++] = 0;
             return TRUE;
           }
-        errs.err_num = ERROR_OPCODE_ILLEGAL;
+        SET_ERROR_NUMBER (ERROR_OPCODE_ILLEGAL, NULL);
         return FALSE;
       case OPRND_TYPE_IMM_LDST:
         return parse_ldst_imm (oper, op, oprnd);
         break;
       case OPRND_TYPE_IMM_FLDST:
-        return parse_fldst_imm (oper, op, oprnd);
+        return parse_ldst_imm (oper, op, oprnd);
+      case OPRND_TYPE_IMM1b:
+        return is_imm_over_range (oper, 0, 1, -1);
       case OPRND_TYPE_IMM2b:
         return is_imm_over_range (oper, 0, 3, -1);
       case OPRND_TYPE_IMM2b_JMPIX:
@@ -3138,19 +3189,19 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           if (((mach_flag & CSKY_ARCH_MASK) == CSKY_ARCH_802)
                 && ((op->opcode & 0xffff0000) != 0))
             {
-              errs.err_num = ERROR_OPCODE_ILLEGAL;
+              SET_ERROR_NUMBER (ERROR_OPCODE_ILLEGAL, NULL);
               return FALSE;
             }
-          *oper = parse_exp(*oper, &csky_insn.e);
-          if (csky_insn.e.X_op == O_constant)
+          *oper = parse_exp(*oper, &csky_insn.e1);
+          if (csky_insn.e1.X_op == O_constant)
             {
               csky_insn.opcode_end = *oper;
-              if (csky_insn.e.X_add_number & 0x7)
+              if (csky_insn.e1.X_add_number & 0x7)
                 {
-                  errs.err_num = ERROR_JMPIX_OVER_RANGE;
+                  SET_ERROR_NUMBER (ERROR_JMPIX_OVER_RANGE, NULL);
                   return FALSE;
                 }
-              csky_insn.val[csky_insn.idx++] = (csky_insn.e.X_add_number >> 3) - 2;
+              csky_insn.val[csky_insn.idx++] = (csky_insn.e1.X_add_number >> 3) - 2;
             }
           return TRUE;
         }
@@ -3253,7 +3304,6 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
                     return FALSE;
                   }
                 csky_insn.val[csky_insn.idx - 1] = (1 << mask_val) - 1;
-                csky_show_info (WARNING_BMASKI_TO_MOVI, 0, NULL, NULL);
                 return TRUE;
               }
           }
@@ -3264,10 +3314,11 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           {
             unsigned int mask_val = csky_insn.val[csky_insn.idx - 1];
             csky_insn.val[csky_insn.idx - 1] = (1 << mask_val) - 1;
-            csky_show_info (WARNING_BMASKI_TO_MOVI, 0, NULL, NULL);
             return TRUE;
           }
         return FALSE;
+      case OPRND_TYPE_OIMM4b:
+        return is_oimm_over_range (oper, 1, 16);
       case OPRND_TYPE_OIMM5b:
         return is_oimm_over_range (oper, 1, 32);
         break;
@@ -3306,7 +3357,6 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
                     return FALSE;
                   }
                 csky_insn.val[csky_insn.idx - 1] = (1 << (mask_val + 1)) - 1;
-                csky_show_info (WARNING_BMASKI_TO_MOVI, 0, NULL, NULL);
                 return TRUE;
               }
           }
@@ -3361,12 +3411,12 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
               {
                   **oper = *(*oper + len + 1);
                   *(*oper + len + 1) = '\0';
-                  *oper++;
+                  *oper += 1;
               }
               **oper = '\0';
             }
           input_line_pointer = save;
-          *oper = parse_exp(curr, &csky_insn.e);
+          *oper = parse_exp(curr, &csky_insn.e1);
           return TRUE;
         }
         break;
@@ -3400,8 +3450,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
             }
           if (!ret)
             {
-              errs.err_num = ERROR_OPERANDS_ILLEGAL;
-              errs.arg1 = (char*) csky_insn.opcode_end;
+              SET_ERROR_NUMBER (ERROR_OPERANDS_ILLEGAL, (char*) csky_insn.opcode_end);
             }
           return ret;
         }
@@ -3451,7 +3500,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
         {
           if (**oper != '(')
             {
-              errs.err_num = ERROR_MISSING_LBRACHKET;
+              SET_ERROR_NUMBER (ERROR_MISSING_LBRACHKET, NULL);
               return FALSE;
             }
           *oper += 1;
@@ -3460,13 +3509,13 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           reg = csky_get_reg_val (*oper, &len);
           if (reg == -1)
             {
-              errs.err_num = ERROR_EXP_GREG;
+              SET_ERROR_NUMBER (ERROR_EXP_GREG, NULL);
               return FALSE;
             }
           *oper += len;
           if (**oper != ')')
             {
-              errs.err_num = ERROR_MISSING_RBRACHKET;
+              SET_ERROR_NUMBER (ERROR_MISSING_RBRACHKET, NULL);
               return FALSE;
             }
           *oper += 1;
@@ -3480,34 +3529,60 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
       /* For jmpi.  */
       case OPRND_TYPE_OFF8b:
       case OPRND_TYPE_OFF16b:
-        *oper = parse_rt (*oper, 1, &csky_insn.e, -1);
+        *oper = parse_rt (*oper, 1, &csky_insn.e1, -1);
         csky_insn.val[csky_insn.idx++] = 0;
         return TRUE;
       case OPRND_TYPE_LABEL_WITH_BRACKET:
       case OPRND_TYPE_CONSTANT:
+      case OPRND_TYPE_ELRW_CONSTANT:
         if (**oper == '[')
           csky_insn.val[csky_insn.idx++] = 0;
         else
           csky_insn.val[csky_insn.idx++] = NEED_OUTPUT_LITERAL;
-        *oper = parse_rt (*oper, 0, &csky_insn.e, -1);
+        *oper = parse_rt (*oper, 0, &csky_insn.e1, -1);
         return TRUE;
       case OPRND_TYPE_FCONSTANT:
-        *oper = parse_rtf (*oper, 0, &csky_insn.e);
+        *oper = parse_rtf (*oper, 0, &csky_insn.e1);
 
         return TRUE;
+
+      case OPRND_TYPE_SFLOAT:
+        *oper = parse_fexp (*oper, &csky_insn.e1, 0, &csky_insn.dbnum);
+        if (csky_insn.e1.X_op == O_absent)
+          return FALSE;
+        return TRUE;
+
+      case OPRND_TYPE_DFLOAT:
+        *oper = parse_fexp (*oper, &csky_insn.e1, 1, &csky_insn.dbnum);
+        if (csky_insn.e1.X_op == O_absent)
+          return FALSE;
+        return TRUE;
+
       /* For grs v2.  */
       case OPRND_TYPE_IMM_OFF18b:
         {
-          *oper = parse_exp(*oper, &csky_insn.e);
+          *oper = parse_exp(*oper, &csky_insn.e1);
           return TRUE;
         }
 
+      case OPRND_TYPE_BLOOP_OFF4b:
+        *oper = parse_exp(*oper, &csky_insn.e2);
+        if (csky_insn.e2.X_op == O_symbol)
+          {
+            csky_insn.opcode_end = *oper;
+            return TRUE;
+          }
+        else
+          return FALSE;
+        break;
+
+      case OPRND_TYPE_BLOOP_OFF12b:
       case OPRND_TYPE_OFF10b:
       case OPRND_TYPE_OFF11b:
       case OPRND_TYPE_OFF16b_LSL1:
       case OPRND_TYPE_OFF26b:
-        *oper = parse_exp(*oper, &csky_insn.e);
-        if (csky_insn.e.X_op == O_symbol)
+        *oper = parse_exp(*oper, &csky_insn.e1);
+        if (csky_insn.e1.X_op == O_symbol)
           {
             csky_insn.opcode_end = *oper;
             return TRUE;
@@ -3523,8 +3598,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           reg = csky_get_reg_val (*oper, &len);
           if (reg == -1 )
             {
-              errs.err_num = ERROR_REG_FORMAT;
-              errs.arg1 = (void *)"The first operand must be regist r1.";
+              SET_ERROR_NUMBER (ERROR_REG_FORMAT, (void *)"The first operand must be regist r1.");
               return FALSE;
             }
           if ( reg != 1)
@@ -3544,8 +3618,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           reg = csky_get_reg_val (*oper, &len);
           if (reg == -1 )
             {
-              errs.err_num = ERROR_REG_FORMAT;
-              errs.arg1 = (void *)"The second operand must be regist r1.";
+              SET_ERROR_NUMBER (ERROR_REG_FORMAT, (void *)"The second operand must be regist r1.");
               return FALSE;
             }
           if ( reg != 1)
@@ -3570,14 +3643,13 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           reg = csky_get_reg_val (*oper, &len);
           if (reg == -1)
             {
-              errs.err_num = ERROR_GREG_ILLEGAL;
+              SET_ERROR_NUMBER (ERROR_GREG_ILLEGAL, NULL);
               return FALSE;
             }
           if (reg != csky_insn.val[0])
             {
-              errs.err_num = ERROR_REG_FORMAT;
-              errs.arg1 = (void *)
-                "The second regist must be the same as first regist.";
+              SET_ERROR_NUMBER (ERROR_REG_FORMAT,
+                                (void *)"The second regist must be the same as first regist.");
               return FALSE;
             }
           *oper += len;
@@ -3595,7 +3667,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           reg = csky_get_reg_val (*oper, &len);
           if (reg == -1)
             {
-              errs.err_num = ERROR_GREG_ILLEGAL;
+              SET_ERROR_NUMBER (ERROR_GREG_ILLEGAL, NULL);
               return FALSE;
             }
           /* dummy reg's real type should be same with first operand.  */
@@ -3631,11 +3703,10 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
       case  OPRND_TYPE_DUP_GREG0_15:
       case  OPRND_TYPE_DUP_AREG:
         {
-          int reg = 0;
+          long reg = 0;
           int len = 0;
-          unsigned int max_reg;
+          long max_reg;
           unsigned int shift_num;
-          char err_str[40];
           if (oprnd->type == OPRND_TYPE_DUP_GREG0_7)
             {
               max_reg = 7;
@@ -3654,15 +3725,19 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           reg = csky_get_reg_val (*oper, &len);
           if (reg == -1)
             {
-              errs.err_num = ERROR_REG_FORMAT;
-              sprintf (err_str, "The register must be r0-r%d", max_reg);
-              errs.arg1 = (void *)err_str;
+              if (max_reg == 31)
+                {
+                  SET_ERROR_NUMBER (ERROR_REG_FORMAT, "The register must be r0-r31");
+                }
+              else
+                {
+                  SET_ERROR_NUMBER (ERROR_REG_FORMAT, "The register must be r0-r15");
+                }
               return FALSE;
             }
           if (reg > max_reg)
             {
-              errs.err_num = ERROR_REG_OVER_RANGE;
-              errs.arg1 = (void *) csky_general_reg[reg];
+              SET_ERROR_NUMBER (ERROR_REG_OVER_RANGE, (void *) reg);
               return FALSE;
             }
           reg |= reg << shift_num;
@@ -3673,11 +3748,11 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           break;
         }
       case  OPRND_TYPE_CONST1:
-        *oper = parse_exp(*oper, &csky_insn.e);
-        if (csky_insn.e.X_op == O_constant)
+        *oper = parse_exp(*oper, &csky_insn.e1);
+        if (csky_insn.e1.X_op == O_constant)
           {
             csky_insn.opcode_end = *oper;
-            if (csky_insn.e.X_add_number != 1)
+            if (csky_insn.e1.X_add_number != 1)
               {
                 return FALSE;
               }
@@ -3686,8 +3761,8 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
           }
       case OPRND_TYPE_UNCOND10b:
       case OPRND_TYPE_UNCOND16b:
-        *oper = parse_exp(*oper, &csky_insn.e);
-        if (csky_insn.e.X_op == O_constant)
+        *oper = parse_exp(*oper, &csky_insn.e1);
+        if (csky_insn.e1.X_op == O_constant)
           return FALSE;
         input_line_pointer = *oper;
         csky_insn.opcode_end = *oper;
@@ -3698,8 +3773,8 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
         return TRUE;
       case OPRND_TYPE_COND10b:
       case OPRND_TYPE_COND16b:
-        *oper = parse_exp(*oper, &csky_insn.e);
-        if (csky_insn.e.X_op == O_constant)
+        *oper = parse_exp(*oper, &csky_insn.e1);
+        if (csky_insn.e1.X_op == O_constant)
           return FALSE;
         input_line_pointer = *oper;
         csky_insn.opcode_end = *oper;
@@ -3709,8 +3784,8 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
         csky_insn.val[csky_insn.idx++] = 0;
         return TRUE;
       case OPRND_TYPE_JCOMPZ:
-        *oper = parse_exp(*oper, &csky_insn.e);
-        if (csky_insn.e.X_op == O_constant)
+        *oper = parse_exp(*oper, &csky_insn.e1);
+        if (csky_insn.e1.X_op == O_constant)
           return FALSE;
         input_line_pointer = *oper;
         csky_insn.opcode_end = *oper;
@@ -3721,7 +3796,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
         csky_insn.val[csky_insn.idx++] = 0;
         return TRUE;
       case  OPRND_TYPE_JBTF:
-        *oper = parse_exp(*oper, &csky_insn.e);
+        *oper = parse_exp(*oper, &csky_insn.e1);
         input_line_pointer = *oper;
         csky_insn.opcode_end = *oper;
         csky_insn.relax.max = csky_relax_table[C (COND_JUMP_S, DISP32)].rlx_length;
@@ -3732,7 +3807,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
         return TRUE;
         break;
       case  OPRND_TYPE_JBR:
-        *oper = parse_exp(*oper, &csky_insn.e);
+        *oper = parse_exp(*oper, &csky_insn.e1);
         input_line_pointer = *oper;
         csky_insn.opcode_end = *oper;
         csky_insn.relax.max = csky_relax_table[C (UNCD_JUMP_S, DISP32)].rlx_length;
@@ -3744,11 +3819,11 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
       case  OPRND_TYPE_JBSR:
         if (do_force2bsr)
           {
-            *oper = parse_exp(*oper, &csky_insn.e);
+            *oper = parse_exp(*oper, &csky_insn.e1);
           }
         else
           {
-            *oper = parse_rt(*oper, 1, &csky_insn.e, -1);
+            *oper = parse_rt(*oper, 1, &csky_insn.e1, -1);
           }
         input_line_pointer = *oper;
         csky_insn.opcode_end = *oper;
@@ -3768,7 +3843,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
               *oper = new_oper;
               if (e.X_add_number > 31)
                 {
-                  errs.err_num = ERROR_IMM_OVERFLOW;
+                  SET_ERROR_NUMBER (ERROR_IMM_OVERFLOW, NULL);
                   return FALSE;
                 }
               csky_insn.val[csky_insn.idx++] = e.X_add_number;
@@ -3776,7 +3851,7 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
                 {
                   if (csky_insn.val[csky_insn.idx - 1] > csky_insn.val[csky_insn.idx - 2])
                     {
-                      errs.err_num = ERROR_IMM_OVERFLOW;
+                      SET_ERROR_NUMBER (ERROR_IMM_OVERFLOW, NULL);
                       return FALSE;
                     }
                   csky_insn.val[csky_insn.idx - 2] =
@@ -3808,11 +3883,11 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
                           return TRUE;
                         }
                       else
-                        errs.err_num = ERROR_MISSING_RSQUARE_BRACKETS;
+                        SET_ERROR_NUMBER (ERROR_MISSING_RSQUARE_BRACKETS, NULL);
                     }
                 }
               else
-                errs.err_num = ERROR_MISSING_LSQUARE_BRACKETS;
+                SET_ERROR_NUMBER (ERROR_MISSING_LSQUARE_BRACKETS, NULL);
             }
           return FALSE;
         }
@@ -3844,11 +3919,7 @@ parse_operands_op (char *str, struct _csky_opcode_info *op)
             || (op[i].operand_num == -1 && csky_insn.number != 0)))
         {
           /* The smaller err_num is more serious.  */
-          if ( errs.err_num > (int)ERROR_OPERANDS_NUMBER)
-            {
-              errs.arg1 = (void *)(op[i].operand_num);
-              errs.err_num = (int)ERROR_OPERANDS_NUMBER;
-            }
+          SET_ERROR_NUMBER (ERROR_OPERANDS_NUMBER, (void *)(op[i].operand_num));
           flag_pass = FALSE;
           continue;
         }
@@ -3871,20 +3942,14 @@ parse_operands_op (char *str, struct _csky_opcode_info *op)
                 }
               else
                 {
-                  if (errs.err_num > ERROR_MISSING_COMMA)
-                    {
-                      errs.err_num = ERROR_MISSING_COMMA;
-                    }
+                  SET_ERROR_NUMBER (ERROR_MISSING_COMMA, NULL);
                   flag_pass = FALSE;
                   break;
                 }
             }
           else if (!is_end_of_line[(unsigned char) *oper])
             {
-              if (errs.err_num > ERROR_BAD_END)
-                {
-                  errs.err_num = ERROR_BAD_END;
-                }
+              SET_ERROR_NUMBER (ERROR_BAD_END, NULL);
               flag_pass = FALSE;
               break;
             }
@@ -3974,7 +4039,7 @@ csky_generate_frags (void)
           howto = bfd_reloc_type_lookup (stdoutput,
                                          csky_insn.opcode->reloc16);
           fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                       2, &csky_insn.e, howto->pc_relative,
+                       2, &csky_insn.e1, howto->pc_relative,
                        csky_insn.opcode->reloc16);
         }
     }
@@ -3987,7 +4052,7 @@ csky_generate_frags (void)
           howto = bfd_reloc_type_lookup (stdoutput,
                                          csky_insn.opcode->reloc32);
           fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                       4, &csky_insn.e, howto->pc_relative,
+                       4, &csky_insn.e1, howto->pc_relative,
                        csky_insn.opcode->reloc32);
         }
     }
@@ -4000,8 +4065,8 @@ csky_generate_frags (void)
                            csky_insn.relax.max,
                            csky_insn.relax.var,
                            csky_insn.relax.subtype,
-                           csky_insn.e.X_add_symbol,
-                           csky_insn.e.X_add_number, 0);
+                           csky_insn.e1.X_add_symbol,
+                           csky_insn.e1.X_add_number, 0);
 
         }
       else
@@ -4013,7 +4078,7 @@ csky_generate_frags (void)
               howto = bfd_reloc_type_lookup (stdoutput,
                                              csky_insn.opcode->reloc16);
               fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                           2, &csky_insn.e, howto->pc_relative,
+                           2, &csky_insn.e1, howto->pc_relative,
                            csky_insn.opcode->reloc16);
             }
           else if (csky_insn.opcode->reloc32 && csky_insn.isize == 4)
@@ -4022,7 +4087,7 @@ csky_generate_frags (void)
               howto = bfd_reloc_type_lookup (stdoutput,
                                              csky_insn.opcode->reloc32);
               fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                           4, &csky_insn.e, howto->pc_relative,
+                           4, &csky_insn.e1, howto->pc_relative,
                            csky_insn.opcode->reloc32);
             }
         }
@@ -4143,15 +4208,13 @@ md_assemble (char *str)
         }
       else if (errs.err_num > ERROR_OPERANDS_NUMBER)
         {
-          errs.err_num = ERROR_OPERANDS_NUMBER;
-          errs.arg1 = (void *) csky_insn.macro->oprnd_num;
+          SET_ERROR_NUMBER (ERROR_OPERANDS_NUMBER, (void *) csky_insn.macro->oprnd_num);
         }
     }
 
   if (csky_insn.opcode == NULL)
     {
-      if (errs.err_num > ERROR_OPCODE_ILLEGAL)
-        errs.err_num = (int)ERROR_OPCODE_ILLEGAL;
+      SET_ERROR_NUMBER (ERROR_OPCODE_ILLEGAL, NULL);
       csky_show_info (errs.err_num, errs.idx,
                       (void *)errs.arg1, (void *)errs.arg1);
       return;
@@ -4679,7 +4742,7 @@ md_convert_frag (bfd *abfd ATTRIBUTE_UNUSED, segT asec , fragS *fragp)
       case JCOND_DISP10:
       case JUNCD_DISP10:
         {
-          unsigned int inst = csky_read_insn (buf, 2);
+          unsigned int inst = csky_read_insn ((unsigned char *)buf, 2);
           inst |= (disp >> 1) & ((1 << 10) - 1);
           csky_write_insn (buf, inst, 2);
           fragp->fr_fix += 2;
@@ -4688,7 +4751,7 @@ md_convert_frag (bfd *abfd ATTRIBUTE_UNUSED, segT asec , fragS *fragp)
       case COND_DISP16:
       case JCOND_DISP16:
         {
-          unsigned int inst = csky_read_insn (buf, 2);
+          unsigned int inst = csky_read_insn ((unsigned char *)buf, 2);
           inst = (inst == CSKYV2_INST_BT16 ? CSKYV2_INST_BT32 : CSKYV2_INST_BF32);
           if (IS_EXTERNAL_SYM(fragp->fr_symbol, asec))
             {
@@ -4702,7 +4765,7 @@ md_convert_frag (bfd *abfd ATTRIBUTE_UNUSED, segT asec , fragS *fragp)
         }
       case LRW_DISP7:
         {
-          unsigned int inst = csky_read_insn (buf, 2);
+          unsigned int inst = csky_read_insn ((unsigned char *)buf, 2);
           int imm;
           imm = (disp+2) >> 2;
           inst |= (imm >> 5) << 8;
@@ -4711,7 +4774,7 @@ md_convert_frag (bfd *abfd ATTRIBUTE_UNUSED, segT asec , fragS *fragp)
         }
       case LRW2_DISP8:
         {
-          unsigned int inst = csky_read_insn (buf, 2);
+          unsigned int inst = csky_read_insn ((unsigned char *)buf, 2);
           int imm = (disp+2) >> 2;
           if (imm >= 0x80)
             {
@@ -4728,7 +4791,7 @@ md_convert_frag (bfd *abfd ATTRIBUTE_UNUSED, segT asec , fragS *fragp)
         }
       case LRW_DISP16:
         {
-          unsigned int inst = csky_read_insn (buf, 2);
+          unsigned int inst = csky_read_insn ((unsigned char *)buf, 2);
           inst = CSKYV2_INST_LRW32 | (((inst & 0xe0) >> 5) << 16);
           if (IS_EXTERNAL_SYM(fragp->fr_symbol, asec))
             {
@@ -4741,13 +4804,13 @@ md_convert_frag (bfd *abfd ATTRIBUTE_UNUSED, segT asec , fragS *fragp)
         }
       case JCOMPZ_DISP16:
         {
-          unsigned int inst = csky_read_insn (buf, 4);
+          unsigned int inst = csky_read_insn ((unsigned char *)buf, 4);
           make_insn (4, inst, disp >> 1, 16);
         }
         break;
       case JCOMPZ_DISP32:
         {
-          unsigned int inst = csky_read_insn (buf, 4);
+          unsigned int inst = csky_read_insn ((unsigned char *)buf, 4);
           int literal_offset;
           make_insn (4, opposite_of_stored_compz(inst), (4+4+PAD_LITERAL_LENGTH) >> 1, 16);
           literal_offset = ((fragp->fr_address + fragp->fr_fix) % 4 == 0 ?
@@ -4759,8 +4822,6 @@ md_convert_frag (bfd *abfd ATTRIBUTE_UNUSED, segT asec , fragS *fragp)
       case JUNCD_DISP16:
       case UNCD_DISP16:
         {
-          unsigned int inst = csky_read_insn (buf, 2);
-          int literal_offset;
           if (IS_EXTERNAL_SYM(fragp->fr_symbol, asec))
             {
               fix_new (fragp, fragp->fr_fix, 4,
@@ -4772,7 +4833,7 @@ md_convert_frag (bfd *abfd ATTRIBUTE_UNUSED, segT asec , fragS *fragp)
       case JCOND_DISP32:
         {
           //'jbt'/'jbf'-> <bf16/bt16>; jmpi32; [pad16]+literal32
-          unsigned int inst = csky_read_insn (buf, 2);
+          unsigned int inst = csky_read_insn ((unsigned char *)buf, 2);
           int literal_offset;
           inst = (inst == CSKYV2_INST_BT16 ? CSKYV2_INST_BF16 : CSKYV2_INST_BT16);
           make_insn (2, inst, (2 + 4 + PAD_LITERAL_LENGTH) >> 1, 10);
@@ -5109,7 +5170,8 @@ md_apply_fix (fixS   *fixP,
                  generate 'lrw r25,label;jsr r25' instead of 'jsri label'.  */
               else if ((mach_flag & CSKY_ARCH_MASK) == CSKY_ARCH_810)
                 {
-                  valueT opcode = csky_read_insn (buf, 4);
+                  howto = bfd_reloc_type_lookup (stdoutput, fixP->fx_r_type);
+                  valueT opcode = csky_read_insn ((unsigned char *)buf, 4);
                   opcode = (opcode & howto->dst_mask) | CSKYV2_INST_JSRI_TO_LRW;
                   csky_write_insn (buf, opcode, 4);
                   opcode = CSKYV2_INST_JSR_R26;
@@ -5185,14 +5247,16 @@ md_apply_fix (fixS   *fixP,
                                         fixP->fx_addsy, val);
               return;
             }
-          valueT opcode = csky_read_insn(buf,fixP->fx_size);
+          valueT opcode = csky_read_insn((unsigned char *)buf,fixP->fx_size);
           /* Clear redundant bits brought from the last
              operation if there is any.  */
           if (do_extend_lrw && ((opcode &0xfc00) == CSKYV2_INST_LRW16))
             val &= 0xff;
           else
-            val &= (issigned?howto->dst_mask:max);
+            val &= (issigned?(offsetT)(howto->dst_mask):max);
 
+          if ( fixP->fx_r_type == BFD_RELOC_CKCORE_PCREL_BLOOP_IMM4BY4)
+            val = ((val & 0xf) << 12);
 
           if((fixP->fx_size == 2)&&((opcode &0xfc00) == CSKYV2_INST_LRW16))
             {
@@ -5827,12 +5891,12 @@ v1_work_lrw (void)
   reg = csky_insn.val[0];
   csky_insn.isize = 2;
   csky_insn.output = frag_more (2);
-  if (csky_insn.e.X_op == O_constant
-      && csky_insn.e.X_add_number <= 0x7f
-      && csky_insn.e.X_add_number >= 0)
+  if (csky_insn.e1.X_op == O_constant
+      && csky_insn.e1.X_add_number <= 0x7f
+      && csky_insn.e1.X_add_number >= 0)
     {
       /* lrw to movi.  */
-      csky_insn.inst = 0x6000 | reg | (csky_insn.e.X_add_number << 4);
+      csky_insn.inst = 0x6000 | reg | (csky_insn.e1.X_add_number << 4);
     }
   else
     {
@@ -5840,12 +5904,12 @@ v1_work_lrw (void)
       csky_insn.inst |= reg << 8;
       if (output_literal)
         {
-          int n = enter_literal (&csky_insn.e, 0, 0, 0);
+          int n = enter_literal (&csky_insn.e1, 0, 0, 0);
 
           /* Create a reference to pool entry.  */
-          csky_insn.e.X_op = O_symbol;
-          csky_insn.e.X_add_symbol = poolsym;
-          csky_insn.e.X_add_number = n << 2;
+          csky_insn.e1.X_op = O_symbol;
+          csky_insn.e1.X_add_symbol = poolsym;
+          csky_insn.e1.X_add_number = n << 2;
         }
 
       if (insn_reloc == BFD_RELOC_CKCORE_TLS_GD32
@@ -5857,7 +5921,7 @@ v1_work_lrw (void)
             csky_insn.output - literal_insn_offset->tls_addend.frag->fr_literal;
         }
       fix_new_exp (frag_now, csky_insn.output - frag_now->fr_literal, 2,
-                   &csky_insn.e, 1, BFD_RELOC_CKCORE_PCREL_IMM8BY4);
+                   &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM8BY4);
     }
   csky_write_insn (csky_insn.output, csky_insn.inst, csky_insn.isize);
 
@@ -6049,7 +6113,7 @@ v1_work_jbsr (void)
     {
       /* Generate fixup BFD_RELOC_CKCORE_PCREL_IMM11BY2.  */
       fix_new_exp (frag_now, csky_insn.output - frag_now->fr_literal,
-                   2, & csky_insn.e, 1, BFD_RELOC_CKCORE_PCREL_IMM11BY2);
+                   2, & csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM11BY2);
     }
   else
     {
@@ -6060,22 +6124,22 @@ v1_work_jbsr (void)
       csky_insn.opcode_idx = 0;
       csky_insn.isize = 2;
 
-      int n = enter_literal (&csky_insn.e, 1, 0, 0);
+      int n = enter_literal (&csky_insn.e1, 1, 0, 0);
 
       /* Create a reference to pool entry.  */
-      csky_insn.e.X_op = O_symbol;
-      csky_insn.e.X_add_symbol = poolsym;
-      csky_insn.e.X_add_number = n << 2;
+      csky_insn.e1.X_op = O_symbol;
+      csky_insn.e1.X_add_symbol = poolsym;
+      csky_insn.e1.X_add_number = n << 2;
 
       /* Generate fixup BFD_RELOC_CKCORE_PCREL_IMM8BY4.  */
       fix_new_exp (frag_now, csky_insn.output - frag_now->fr_literal,
-                   2, & csky_insn.e, 1, BFD_RELOC_CKCORE_PCREL_IMM8BY4);
+                   2, & csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM8BY4);
 
-      if (csky_insn.e.X_op != O_absent && do_jsri2bsr)
+      if (csky_insn.e1.X_op != O_absent && do_jsri2bsr)
         {
           /* Generate fixup BFD_RELOC_CKCORE_PCREL_JSR_IMM11BY2. */
           fix_new_exp (frag_now, csky_insn.output - frag_now->fr_literal,
-                       2, & (litpool + (csky_insn.e.X_add_number >> 2))->e,
+                       2, & (litpool + (csky_insn.e1.X_add_number >> 2))->e,
                        1, BFD_RELOC_CKCORE_PCREL_JSR_IMM11BY2);
         }
     }
@@ -6220,7 +6284,7 @@ v2_work_addi (void)
           if (insn_reloc == BFD_RELOC_CKCORE_GOTOFF)
             {
               fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                           4, &csky_insn.e, 0, BFD_RELOC_CKCORE_GOTOFF_IMM18);
+                           4, &csky_insn.e1, 0, BFD_RELOC_CKCORE_GOTOFF_IMM18);
             }
           else
             csky_insn.inst |= (csky_insn.val[2] - 1);
@@ -6361,22 +6425,22 @@ v2_work_add_sub (void)
         {
           if (csky_insn.val[0] > 7)
             csky_show_info (ERROR_REG_OVER_RANGE, 1,
-                  (void *)csky_general_reg[csky_insn.val[0]], NULL);
+                  (void *)(long)csky_insn.val[0], NULL);
           if (csky_insn.val[1] > 7)
             csky_show_info (ERROR_REG_OVER_RANGE, 2,
-                  (void *)csky_general_reg[csky_insn.val[1]], NULL);
+                  (void *)(long)csky_insn.val[1], NULL);
           if (csky_insn.val[2] > 7)
             csky_show_info (ERROR_REG_OVER_RANGE, 3,
-                  (void *)csky_general_reg[csky_insn.val[2]], NULL);
+                  (void *)(long)csky_insn.val[2], NULL);
         }
       else
         {
           if (csky_insn.val[0] > 15)
             csky_show_info (ERROR_REG_OVER_RANGE, 1,
-                  (void *)csky_general_reg[csky_insn.val[0]], NULL);
+                  (void *)(long)csky_insn.val[0], NULL);
           if (csky_insn.val[1] > 15)
             csky_show_info (ERROR_REG_OVER_RANGE, 2,
-                  (void *)csky_general_reg[csky_insn.val[1]], NULL);
+                  (void *)(long)csky_insn.val[1], NULL);
         }
       return FALSE;
     }
@@ -6506,7 +6570,7 @@ v2_work_not (void)
 bfd_boolean
 v2_work_jbtf (void)
 {
-  if (csky_insn.e.X_add_symbol == NULL || csky_insn.e.X_op == O_constant)
+  if (csky_insn.e1.X_add_symbol == NULL || csky_insn.e1.X_op == O_constant)
     {
       csky_show_info (ERROR_UNDEFINE, 0, (void *)"operand is invalid", NULL);
       return FALSE;
@@ -6519,7 +6583,7 @@ v2_work_jbtf (void)
       csky_insn.output = frag_more (2);
       csky_insn.isize = 2;
       fix_new_exp(frag_now, csky_insn.output-frag_now->fr_literal,
-                  2, &csky_insn.e, 1, BFD_RELOC_CKCORE_PCREL_IMM10BY2);
+                  2, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM10BY2);
     }
   else if (do_long_jump)
     {
@@ -6528,8 +6592,8 @@ v2_work_jbtf (void)
                                    JCOND_DISP32_LEN,
                                    JCOND_DISP10_LEN,
                                    JCOND_DISP10,
-                                   csky_insn.e.X_add_symbol,
-                                   csky_insn.e.X_add_number,
+                                   csky_insn.e1.X_add_symbol,
+                                   csky_insn.e1.X_add_number,
                                    0);
       csky_insn.isize = 2;
       csky_insn.max = JCOND_DISP32_LEN;
@@ -6542,8 +6606,8 @@ v2_work_jbtf (void)
                                    COND_DISP16_LEN,
                                    COND_DISP10_LEN,
                                    COND_DISP10,
-                                   csky_insn.e.X_add_symbol,
-                                   csky_insn.e.X_add_number,
+                                   csky_insn.e1.X_add_symbol,
+                                   csky_insn.e1.X_add_number,
                                    0);
       csky_insn.isize = 2;
       csky_insn.max = COND_DISP16_LEN;
@@ -6558,7 +6622,7 @@ v2_work_jbtf (void)
 bfd_boolean
 v2_work_jbr (void)
 {
-  if (csky_insn.e.X_add_symbol == NULL || csky_insn.e.X_op == O_constant)
+  if (csky_insn.e1.X_add_symbol == NULL || csky_insn.e1.X_op == O_constant)
     {
       csky_show_info (ERROR_UNDEFINE, 0, (void *)"operand is invalid", NULL);
       return FALSE;
@@ -6572,8 +6636,8 @@ v2_work_jbr (void)
                                    JUNCD_DISP32_LEN,
                                    JUNCD_DISP10_LEN,
                                    JUNCD_DISP10,
-                                   csky_insn.e.X_add_symbol,
-                                   csky_insn.e.X_add_number,
+                                   csky_insn.e1.X_add_symbol,
+                                   csky_insn.e1.X_add_number,
                                    0);
 
       csky_insn.inst = csky_insn.opcode->op16[0].opcode;
@@ -6587,8 +6651,8 @@ v2_work_jbr (void)
                                    UNCD_DISP16_LEN,
                                    UNCD_DISP10_LEN,
                                    UNCD_DISP10,
-                                   csky_insn.e.X_add_symbol,
-                                   csky_insn.e.X_add_number,
+                                   csky_insn.e1.X_add_symbol,
+                                   csky_insn.e1.X_add_number,
                                    0);
       csky_insn.isize = 2;
       csky_insn.max = UNCD_DISP16_LEN;
@@ -6612,35 +6676,35 @@ v2_work_lrw (void)
 
   /* If the second operand is O_constant, We can use movi/moih
      instead of lrw.  */
-  if (csky_insn.e.X_op == O_constant)
+  if (csky_insn.e1.X_op == O_constant)
     {
       /* 801 only has movi16.  */
-      if (SIZE_V2_MOVI16 (csky_insn.e.X_add_number) && reg < 8)
+      if (SIZE_V2_MOVI16 (csky_insn.e1.X_add_number) && reg < 8)
         {
           /* movi16 instead.  */
           csky_insn.output = frag_more (2);
           csky_insn.inst = CSKYV2_INST_MOVI16 | (reg << 8)
-            | (csky_insn.e.X_add_number);
+            | (csky_insn.e1.X_add_number);
           csky_insn.isize = 2;
           is_done = 1;
         }
-      else if (SIZE_V2_MOVI32 (csky_insn.e.X_add_number)
+      else if (SIZE_V2_MOVI32 (csky_insn.e1.X_add_number)
                && ((mach_flag & CSKY_ARCH_MASK) != CSKY_ARCH_801))
         {
           /* movi32 instead.  */
           csky_insn.output = frag_more (4);
           csky_insn.inst = CSKYV2_INST_MOVI32 | (reg << 16)
-            | (csky_insn.e.X_add_number);
+            | (csky_insn.e1.X_add_number);
           csky_insn.isize = 4;
           is_done = 1;
         }
-      else if (SIZE_V2_MOVIH (csky_insn.e.X_add_number)
+      else if (SIZE_V2_MOVIH (csky_insn.e1.X_add_number)
                && ((mach_flag & CSKY_ARCH_MASK) != CSKY_ARCH_801))
         {
           /* movih instead.  */
           csky_insn.output = frag_more (4);
           csky_insn.inst = CSKYV2_INST_MOVIH | (reg << 16)
-            | ((csky_insn.e.X_add_number >> 16) & 0xffff);
+            | ((csky_insn.e1.X_add_number >> 16) & 0xffff);
           csky_insn.isize = 4;
           is_done = 1;
         }
@@ -6651,11 +6715,11 @@ v2_work_lrw (void)
 
   if (output_literal)
     {
-      int n = enter_literal (&csky_insn.e, 0, 0, 0);
+      int n = enter_literal (&csky_insn.e1, 0, 0, 0);
       /* Create a reference to pool entry.  */
-      csky_insn.e.X_op = O_symbol;
-      csky_insn.e.X_add_symbol = poolsym;
-      csky_insn.e.X_add_number = n << 2;
+      csky_insn.e1.X_op = O_symbol;
+      csky_insn.e1.X_add_symbol = poolsym;
+      csky_insn.e1.X_add_number = n << 2;
     }
   /* If 16bit force.  */
   if (csky_insn.flag_force == INSN_OPCODE16F)
@@ -6679,7 +6743,7 @@ v2_work_lrw (void)
       csky_insn.inst = csky_insn.opcode->op16[0].opcode | (reg << 5);
       csky_insn.max = 4;
       fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                   2, &csky_insn.e, 1, BFD_RELOC_CKCORE_PCREL_IMM7BY4);
+                   2, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM7BY4);
     }
   else if (csky_insn.flag_force == INSN_OPCODE32F)
     {
@@ -6695,7 +6759,7 @@ v2_work_lrw (void)
        }
       csky_insn.inst = csky_insn.opcode->op32[0].opcode | (reg << 16);
       fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                   4, &csky_insn.e, 1, BFD_RELOC_CKCORE_PCREL_IMM16BY4);
+                   4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM16BY4);
     }
   else if (!is_done)
     {
@@ -6714,8 +6778,8 @@ v2_work_lrw (void)
                                       LRW_DISP16_LEN,
                                       LRW_DISP7_LEN,
                                       (do_extend_lrw?LRW2_DISP8:LRW_DISP7),
-                                      csky_insn.e.X_add_symbol,
-                                      csky_insn.e.X_add_number, 0);
+                                      csky_insn.e1.X_add_symbol,
+                                      csky_insn.e1.X_add_number, 0);
           if (insn_reloc == BFD_RELOC_CKCORE_TLS_GD32
               || insn_reloc == BFD_RELOC_CKCORE_TLS_LDM32
               || insn_reloc == BFD_RELOC_CKCORE_TLS_IE32)
@@ -6743,7 +6807,7 @@ v2_work_lrw (void)
            }
           csky_insn.inst = csky_insn.opcode->op32[0].opcode | (reg << 16);
           fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                       4, &csky_insn.e, 1, BFD_RELOC_CKCORE_PCREL_IMM16BY4);
+                       4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM16BY4);
        }
     }
 
@@ -6765,15 +6829,15 @@ v2_work_lrsrsw (void)
     {
       case BFD_RELOC_CKCORE_GOT32:
         fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                     4, &csky_insn.e, 0, BFD_RELOC_CKCORE_GOT_IMM18BY4);
+                     4, &csky_insn.e1, 0, BFD_RELOC_CKCORE_GOT_IMM18BY4);
         break;
       case BFD_RELOC_CKCORE_PLT32:
         fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                     4, &csky_insn.e, 0, BFD_RELOC_CKCORE_PLT_IMM18BY4);
+                     4, &csky_insn.e1, 0, BFD_RELOC_CKCORE_PLT_IMM18BY4);
         break;
       default:
         fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                     4, &csky_insn.e, 1, BFD_RELOC_CKCORE_DOFFSET_IMM18BY4);
+                     4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_DOFFSET_IMM18BY4);
         break;
     }
   csky_write_insn (csky_insn.output, csky_insn.inst, csky_insn.isize);
@@ -6789,25 +6853,25 @@ v2_work_jbsr (void)
     {
       csky_insn.output = frag_more (4);
       fix_new_exp (frag_now, csky_insn.output - frag_now->fr_literal,
-                   4, &csky_insn.e, 1, BFD_RELOC_CKCORE_PCREL_IMM26BY2);
+                   4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM26BY2);
       csky_insn.isize = 4;
       csky_insn.inst = CSKYV2_INST_BSR32;
     }
   else
     {
+      int n = enter_literal (&csky_insn.e1, 0, 0, 0);
       csky_insn.output = frag_more (4);
-      int n = enter_literal (&csky_insn.e, 0, 0, 0);
-      csky_insn.e.X_op = O_symbol;
-      csky_insn.e.X_add_symbol = poolsym;
-      csky_insn.e.X_add_number = n << 2;
+      csky_insn.e1.X_op = O_symbol;
+      csky_insn.e1.X_add_symbol = poolsym;
+      csky_insn.e1.X_add_number = n << 2;
       fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                 4, &csky_insn.e, 1, BFD_RELOC_CKCORE_PCREL_IMM16BY4);
+                 4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM16BY4);
       if (do_jsri2bsr
           || ((mach_flag & CSKY_ARCH_MASK) == CSKY_ARCH_810))
         {
           fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
                        4,
-                       &(litpool+(csky_insn.e.X_add_number >> 2))->e,
+                       &(litpool+(csky_insn.e1.X_add_number >> 2))->e,
                        1,
                        BFD_RELOC_CKCORE_PCREL_JSR_IMM26BY2);
         }
@@ -6824,6 +6888,7 @@ v2_work_jbsr (void)
         }
     }
   csky_write_insn (csky_insn.output, csky_insn.inst, csky_insn.isize);
+
   return TRUE;
 }
 
@@ -6831,10 +6896,10 @@ bfd_boolean
 v2_work_jsri (void)
 {
   /* dump literal.  */
-  int n = enter_literal (&csky_insn.e, 1, 0, 0);
-  csky_insn.e.X_op = O_symbol;
-  csky_insn.e.X_add_symbol = poolsym;
-  csky_insn.e.X_add_number = n << 2;
+  int n = enter_literal (&csky_insn.e1, 1, 0, 0);
+  csky_insn.e1.X_op = O_symbol;
+  csky_insn.e1.X_add_symbol = poolsym;
+  csky_insn.e1.X_add_number = n << 2;
 
   /* Generate relax or reloc if necessary.  */
   csky_generate_frags ();
@@ -6851,7 +6916,7 @@ v2_work_jsri (void)
          For 'jbsr .L1', this reolc type's symbol
          is bound to '.L1', isn't bound to literal pool */
       fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                   4, &(litpool+(csky_insn.e.X_add_number >> 2))->e, 1,
+                   4, &(litpool+(csky_insn.e1.X_add_number >> 2))->e, 1,
                    BFD_RELOC_CKCORE_PCREL_JSR_IMM26BY2);
       csky_insn.output = frag_more(4);
       dwarf2_emit_insn (0);
@@ -6872,30 +6937,30 @@ v2_work_movih (void)
   int rz = csky_insn.val[0];
   csky_insn.output = frag_more (4);
   csky_insn.inst = csky_insn.opcode->op32[0].opcode | (rz << 16);
-  if (csky_insn.e.X_op == O_constant)
+  if (csky_insn.e1.X_op == O_constant)
     {
-      if ((csky_insn.e.X_unsigned == 1) && (csky_insn.e.X_add_number > 0xffff))
+      if ((csky_insn.e1.X_unsigned == 1) && (csky_insn.e1.X_add_number > 0xffff))
         {
           csky_show_info (ERROR_IMM_OVERFLOW, 2, NULL, NULL);
           return FALSE;
         }
-      else if ((csky_insn.e.X_unsigned == 0) && (csky_insn.e.X_add_number < 0))
+      else if ((csky_insn.e1.X_unsigned == 0) && (csky_insn.e1.X_add_number < 0))
         {
           csky_show_info (ERROR_IMM_OVERFLOW, 2, NULL, NULL);
           return FALSE;
         }
       else
-        csky_insn.inst |= (csky_insn.e.X_add_number & 0xffff);
+        csky_insn.inst |= (csky_insn.e1.X_add_number & 0xffff);
     }
-  else if ((csky_insn.e.X_op == O_right_shift)
-           || ((csky_insn.e.X_op == O_symbol)
+  else if ((csky_insn.e1.X_op == O_right_shift)
+           || ((csky_insn.e1.X_op == O_symbol)
                && (insn_reloc != BFD_RELOC_NONE)))
     {
-      if ((csky_insn.e.X_op_symbol != 0)
-          && (csky_insn.e.X_op_symbol->sy_value.X_op == O_constant)
-          && (16 == csky_insn.e.X_op_symbol->sy_value.X_add_number))
+      if ((csky_insn.e1.X_op_symbol != 0)
+          && (csky_insn.e1.X_op_symbol->sy_value.X_op == O_constant)
+          && (16 == csky_insn.e1.X_op_symbol->sy_value.X_add_number))
         {
-          csky_insn.e.X_op = O_symbol;
+          csky_insn.e1.X_op = O_symbol;
           if (insn_reloc == BFD_RELOC_CKCORE_GOT32)
             insn_reloc = BFD_RELOC_CKCORE_GOT_HI16;
           else if (insn_reloc == BFD_RELOC_CKCORE_PLT32)
@@ -6907,7 +6972,7 @@ v2_work_movih (void)
           else
             insn_reloc = BFD_RELOC_CKCORE_ADDR_HI16;
           fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                       4, &csky_insn.e, 0, insn_reloc);
+                       4, &csky_insn.e1, 0, insn_reloc);
         }
       else
         {
@@ -6929,22 +6994,22 @@ v2_work_ori (void)
   int rx = csky_insn.val[1];
   csky_insn.output = frag_more (4);
   csky_insn.inst = csky_insn.opcode->op32[0].opcode | (rz << 21) | (rx << 16);
-  if (csky_insn.e.X_op == O_constant)
+  if (csky_insn.e1.X_op == O_constant)
     {
-      if (csky_insn.e.X_add_number <= 0xffff && csky_insn.e.X_add_number >= 0)
-        csky_insn.inst |= csky_insn.e.X_add_number;
+      if (csky_insn.e1.X_add_number <= 0xffff && csky_insn.e1.X_add_number >= 0)
+        csky_insn.inst |= csky_insn.e1.X_add_number;
       else
         {
           csky_show_info (ERROR_IMM_OVERFLOW, 3, NULL, NULL);
           return FALSE;
         }
     }
-  else if (csky_insn.e.X_op == O_bit_and)
+  else if (csky_insn.e1.X_op == O_bit_and)
     {
-      if ((csky_insn.e.X_op_symbol->sy_value.X_op == O_constant)
-          && (0xffff == csky_insn.e.X_op_symbol->sy_value.X_add_number))
+      if ((csky_insn.e1.X_op_symbol->sy_value.X_op == O_constant)
+          && (0xffff == csky_insn.e1.X_op_symbol->sy_value.X_add_number))
         {
-          csky_insn.e.X_op = O_symbol;
+          csky_insn.e1.X_op = O_symbol;
           if (insn_reloc == BFD_RELOC_CKCORE_GOT32)
             insn_reloc = BFD_RELOC_CKCORE_GOT_LO16;
           else if (insn_reloc == BFD_RELOC_CKCORE_PLT32)
@@ -6956,7 +7021,7 @@ v2_work_ori (void)
           else
             insn_reloc = BFD_RELOC_CKCORE_ADDR_LO16;
           fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                       4, &csky_insn.e, 0, insn_reloc);
+                       4, &csky_insn.e1, 0, insn_reloc);
         }
       else
         {
@@ -6970,6 +7035,72 @@ v2_work_ori (void)
   return TRUE;
 }
 
+bfd_boolean
+float_work_fmovi (void)
+{
+  int rx = csky_insn.val[0];
+  offsetT add_number = csky_insn.e1.X_add_number;
+  int imm4 = 0;
+  int imm8 = 0;
+
+  csky_insn.inst = csky_insn.opcode->op32[0].opcode | rx;
+
+  if (strstr(csky_insn.opcode->mnemonic, "fmovis"))
+    {
+      /* fmovis frx, float.  */
+      imm4 = 11 - (((add_number & 0x7f800000) >> 23)  - 127);
+      /* Check float range.  */
+      if ((add_number & 0x00007fff) || ((imm4 < 0) || (imm4 > 15)))
+        {
+          csky_show_info (ERROR_IMM_OVERFLOW, 2, NULL, NULL);
+          return FALSE;
+        }
+      imm8 = (add_number & 0x007f8000) >> 15;
+      csky_insn.inst = csky_insn.inst | ((imm8 & 0xf) << 4)
+       | ((imm8 & 0xf0) << 17) | ((imm4 & 0xf) << 16)
+       | ((add_number & 0x80000000) >> 11);
+    }
+  else
+    {
+      /* fmovid frx, float.  */
+      imm4 = 11 - (((csky_insn.dbnum & 0x7ff0000000000000) >> 52)  - 1023);
+      /* Check float range.  */
+      if ((csky_insn.dbnum & 0x00000fffffffffff) || ((imm4 < 0) || (imm4 > 15)))
+        {
+          csky_show_info (ERROR_IMM_OVERFLOW, 2, NULL, NULL);
+          return FALSE;
+        }
+      imm8 = (csky_insn.dbnum & 0x000ff00000000000) >> 44;
+      csky_insn.inst = csky_insn.inst | ((imm8 & 0xf) << 4)
+       | ((imm8 & 0xf0) << 17) | ((imm4 & 0xf) << 16)
+       | ((csky_insn.dbnum & 0x8000000000000000) >> 43);
+    }
+  csky_insn.output = frag_more(4);
+  csky_insn.isize = 4;
+  csky_write_insn (csky_insn.output, csky_insn.inst, csky_insn.isize);
+  return TRUE;
+}
+
+bfd_boolean
+dsp_work_bloop (void)
+{
+  int reg = csky_insn.val[0];
+  csky_insn.output = frag_more(4);
+  csky_insn.inst = csky_insn.opcode->op32[0].opcode | ( reg << 16);
+  csky_insn.isize = 4;
+
+  if (csky_insn.e1.X_op == O_symbol
+      && csky_insn.e2.X_op == O_symbol)
+    {
+        fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                     4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_BLOOP_IMM12BY4);
+        fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                     4, &csky_insn.e2, 1, BFD_RELOC_CKCORE_PCREL_BLOOP_IMM4BY4);
+    }
+
+  csky_write_insn (csky_insn.output, csky_insn.inst, csky_insn.isize);
+  return TRUE;
+}
 /* The followings are for csky pseudo handling.  */
 
 static void

@@ -69,13 +69,12 @@ static struct csky_arch_for_merge csky_archs[] =
   /*{ "802p", M_CK802P, CSKY_V1P, 0, 1},
   { "803p", M_CK803P, CSKY_V1P, 1, 1},
   { "810p", M_CK810P, CSKY_V1P, 2, 1},*/
-  /* 801,802,803,803s,807,810 merge to largest one.  */
+  /* 801,802,803,807,810 merge to largest one.  */
   { "801",  CSKY_ARCH_801,  CSKY_V2,  0, 1},
   { "802",  CSKY_ARCH_802,  CSKY_V2,  1, 1},
   { "803",  CSKY_ARCH_803,  CSKY_V2,  2, 1},
-  { "803s", CSKY_ARCH_803S, CSKY_V2,  3, 1},
-  { "807",  CSKY_ARCH_807,  CSKY_V2,  4, 1},
-  { "810",  CSKY_ARCH_810,  CSKY_V2,  5, 1},
+  { "807",  CSKY_ARCH_807,  CSKY_V2,  3, 1},
+  { "810",  CSKY_ARCH_810,  CSKY_V2,  4, 1},
   { NULL, 0, 0, 0, 0}
 };
 
@@ -856,6 +855,40 @@ static reloc_howto_type csky_elf_howto_table[] =
          0x0,                         /* src_mask */
          0x0,                         /* dst_mask */
          TRUE),                       /* pcrel_offset */
+
+  /* 62: IRELATIVE*/
+  HOWTO (R_CKCORE_IRELATIVE,0,0,0,0,0,0,0,"R_CKCORE_IRELATIVE",0,0,0,0),
+
+  /* 63: for bloop instruction */
+  HOWTO (R_CKCORE_PCREL_BLOOP_IMM4BY4,/* type */
+         1,                           /* rightshift */
+         2,                           /* size */
+         4,                           /* bitsize */
+         1,                           /* pc_relative */
+         0,                           /* bitpos */
+         complain_overflow_signed,    /* complain_on_overflow */
+         bfd_elf_generic_reloc,       /* special_function */
+         "R_CKCORE_PCREL_BLOOP_IMM4BY4",/* name */
+         FALSE,                       /* partial_inplace */
+         0x0,                         /* src_mask */
+         0xf,                         /* dst_mask */
+         TRUE),                       /* pcrel_offset */
+  /* 64: for bloop instruction */
+  HOWTO (R_CKCORE_PCREL_BLOOP_IMM12BY4,/* type */
+         1,                           /* rightshift */
+         2,                           /* size */
+         12,                          /* bitsize */
+         1,                           /* pc_relative */
+         0,                           /* bitpos */
+         complain_overflow_signed,    /* complain_on_overflow */
+         bfd_elf_generic_reloc,       /* special_function */
+         "R_CKCORE_PCREL_BLOOP_IMM12BY4",/* name */
+         FALSE,                       /* partial_inplace */
+         0x0,                         /* src_mask */
+         0xfff,                       /* dst_mask */
+         TRUE),                       /* pcrel_offset */
+
+
 };
 
 /* whether the target 32bits is forced to be that the high
@@ -4020,7 +4053,7 @@ _csky_relocate_contents (reloc_howto_type *howto,
                separate test, we can check for this by or-ing in the
                operands when testing for the sum overflowing its final
                field.  */
-            sum = (a + b) * addrmask;
+            sum = (a + b) & addrmask;
             if ((a | b | sum) & signmask)
               {
                 flag = bfd_reloc_overflow;
@@ -4456,6 +4489,15 @@ csky_elf_relocate_section(bfd *                  output_bfd,
 #define within_range(x, L)  (-(1 << (L - 1)) < (x) && (x) < (1 << (L -1)) - 2)
       switch (howto->type)
         {
+          case R_CKCORE_PCREL_IMM18BY2:
+            /* When h is NULL, means the instruction written as
+                   grs rx, imm32
+               if the highest bit is set, prevent the high 32bits
+               turn to 0xffffffff when signed extern in 64bit
+               host machine.  */
+            if (h == NULL && (addend & 0x80000000))
+              addend &= 0xffffffff;
+            break;
           case R_CKCORE_GOT12:
           case R_CKCORE_PLT12:
           case R_CKCORE_GOT_HI16:

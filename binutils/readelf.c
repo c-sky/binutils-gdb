@@ -760,7 +760,7 @@ guess_is_rela (unsigned int e_machine)
     case EM_M32C_OLD:
     case EM_M32C:
     case EM_M32R:
-    case EM_MCORE:
+//    case EM_MCORE:
     case EM_CYGNUS_MEP:
     case EM_METAG:
     case EM_MMIX:
@@ -1280,9 +1280,9 @@ dump_relocations (FILE * file,
 	  rtype = elf_ft32_reloc_type (type);
 	  break;
 
-	case EM_MCORE:
-	  rtype = elf_mcore_reloc_type (type);
-	  break;
+//	case EM_MCORE:
+//	  rtype = elf_mcore_reloc_type (type);
+//	  break;
 
 	case EM_MMIX:
 	  rtype = elf_mmix_reloc_type (type);
@@ -2194,7 +2194,7 @@ get_machine_name (unsigned e_machine)
     case EM_FR20:		return "Fujitsu FR20";
     case EM_FT32:		return "FTDI FT32";
     case EM_RH32:		return "TRW RH32";
-    case EM_MCORE:		return "MCORE";
+//    case EM_MCORE:		return "MCORE";
     case EM_CSKY:               return "CSKY";
     case EM_ARM:		return "ARM";
     case EM_OLD_ALPHA:		return "Digital Alpha (old)";
@@ -11576,8 +11576,8 @@ is_32bit_abs_reloc (unsigned int reloc_type)
     case EM_68HC11:
     case EM_68HC12:
       return reloc_type == 6; /* R_M68HC11_32.  */
-    case EM_MCORE:
-      return reloc_type == 1; /* R_MCORE_ADDR32.  */
+//    case EM_MCORE:
+//      return reloc_type == 1; /* R_MCORE_ADDR32.  */
     case EM_CYGNUS_MEP:
       return reloc_type == 4; /* R_MEP_32.  */
     case EM_METAG:

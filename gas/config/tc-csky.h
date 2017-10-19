@@ -87,6 +87,7 @@ extern int csky_force_relocation (fixS * fix);
 extern bfd_boolean csky_fix_adjustable (fixS * fixP);
 extern void csky_cfi_frame_initial_instructions (void);
 extern int tc_csky_regname_to_dw2regnum (char *regname);
+extern long csky_relax_frag (segT segment, fragS *fragP, long stretch);
 
 #ifdef OBJ_ELF
 const char * elf32_csky_target_format (void);

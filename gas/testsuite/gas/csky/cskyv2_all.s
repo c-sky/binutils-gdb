@@ -198,6 +198,14 @@ all:
    ldr.b  r3, (r2, r1 << 1)
    ldr.h  r3, (r2, r1 << 1)
    ldr.w  r3, (r2, r1 << 1)
+   ldr.bs r2, (r2, r3 << 0)
+   ldr.bs r2, (r2, r3 << 1)
+   ldr.bs r2, (r2, r3 << 2)
+   ldr.bs r2, (r2, r3 << 3)
+   ldr.hs r2, (r2, r3 << 0)
+   ldr.hs r2, (r2, r3 << 1)
+   ldr.hs r2, (r2, r3 << 2)
+   ldr.hs r2, (r2, r3 << 3)
    xsr    r3, r2, 3
    asrc   r3, r2, 3
    lsrc   r3, r2, 3

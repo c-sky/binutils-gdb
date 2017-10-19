@@ -146,6 +146,13 @@ lrealpath (const char *filename)
 	/* The file system is case-preserving but case-insensitive,
 	   Canonicalize to lowercase, using the codepage associated
 	   with the process locale.  */
+/* FIXME This is added to avoid 'cannot find /lib/libc.so.0' of
+   mingw ld. It there any way to fix this without change code
+   here?  */
+#if defined (__MINGW32__)
+        while(buf[len-1]=='\\') len--;
+         buf[len]='\0';
+#endif
         CharLowerBuff (buf, len);
         return strdup (buf);
       }

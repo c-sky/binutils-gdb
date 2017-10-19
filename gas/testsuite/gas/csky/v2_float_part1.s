@@ -20,30 +20,6 @@ L1:
    fstrd vr2, (r2, r4 << 2)
    fstrs vr2, (r2, r4 << 0)
    fstrs vr2, (r2, r4 << 2)
-   vstrq.8 vr2, (r2, r3 << 0)
-   vstrq.16 vr2, (r2, r3 << 0)
-   vstrq.32 vr2, (r2, r3 << 0)
-   vldrq.8 vr2, (r2, r3 << 0)
-   vldrq.16 vr2, (r2, r3 << 0)
-   vldrq.32 vr2, (r2, r3 << 0)
-   vstrd.8 vr2, (r2, r3 << 0)
-   vstrd.16 vr2, (r2, r3 << 0)
-   vstrd.32 vr2, (r2, r3 << 0)
-   vldrd.8 vr2, (r2, r3 << 0)
-   vldrd.16 vr2, (r2, r3 << 0)
-   vldrd.32 vr2, (r2, r3 << 0)
-   vldq.8  vr2, (r2, 16)
-   vldq.16  vr2, (r2, 16)
-   vldq.32  vr2, (r2, 16)
-   vstq.8  vr2, (r2, 16)
-   vstq.16  vr2, (r2, 16)
-   vstq.32  vr2, (r2, 16)
-   vldd.8  vr2, (r2, 16)
-   vldd.16  vr2, (r2, 16)
-   vldd.32  vr2, (r2, 16)
-   vstd.8  vr2, (r2, 16)
-   vstd.16  vr2, (r2, 16)
-   vstd.32  vr2, (r2, 16)
    fnmulm   vr2, vr3, vr4
    fnmscm   vr2, vr3, vr4
    fnmacm   vr2, vr3, vr4
@@ -70,5 +46,3 @@ L1:
    fmuls    vr2, vr3, vr4
    fsubs    vr2, vr3, vr4
    fadds    vr2, vr3, vr4
-   flrws    vr2, 3.14
-   flrwd    vr2, 3.14

@@ -50,9 +50,8 @@ static const bfd_arch_info_type arch_info_struct[] =
   N (bfd_mach_ck801,   "csky:ck801",    FALSE, & arch_info_struct[3]),
   N (bfd_mach_ck802,   "csky:ck802",    FALSE, & arch_info_struct[4]),
   N (bfd_mach_ck803,   "csky:ck803",    FALSE, & arch_info_struct[5]),
-  N (bfd_mach_ck803s,  "csky:ck803s",   FALSE, & arch_info_struct[6]),
-  N (bfd_mach_ck807,   "csky:ck807",    FALSE, & arch_info_struct[7]),
-  N (bfd_mach_ck810,   "csky:ck810",    FALSE, & arch_info_struct[8]),
+  N (bfd_mach_ck807,   "csky:ck807",    FALSE, & arch_info_struct[6]),
+  N (bfd_mach_ck810,   "csky:ck810",    FALSE, & arch_info_struct[7]),
   N (bfd_mach_ck_unknown, "csky:any",   FALSE, NULL)
 };
 
