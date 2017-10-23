@@ -129,6 +129,7 @@ typedef enum
   DJP_COMMAND_FORMAT = -25,          /* Command format error.  */
   DJP_COMMAND_EXECUTE = -26,         /* Command is not finished.  */
   DJP_NON_DEBUG_REGION = -27,        /* CPU in non-debug region.  */
+  DJP_NO_MORE_HWBKPT_HWWP = -28,     /* No more hw-bkpt or hw-watchpoint.  */
 } PROXY_ERROR;
 
 

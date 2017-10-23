@@ -97,9 +97,9 @@ static char csky_selected_register_p[CSKY_NUM_REGS] = {0};
 static int
 csky_get_insn_version (struct gdbarch * gdbarch)
 {
-  int mach = gdbarch_bfd_arch_info (gdbarch)->mach;
-  if (((mach & CSKY_ARCH_MASK) == CSKY_ARCH_510) ||
-      ((mach & CSKY_ARCH_MASK) == CSKY_ARCH_610) ||
+  int mach = gdbarch_tdep (gdbarch)->mach;
+  if ((mach == CSKY_ARCH_510) ||
+      (mach == CSKY_ARCH_610) ||
       (mach == 0))
     {
       return CSKY_INSN_V1;
@@ -2700,10 +2700,10 @@ csky_frame_unwind_cache (struct frame_info *this_frame)
   block_addr = get_frame_address_in_block (this_frame);
   if (find_pc_partial_function (block_addr, NULL, &prologue_start, &func_end)
        == 0)
-  {
-    /* FIXME: i don't know how to do with it here.  */
-    return cache;
-  }
+    {
+      /* FIXME: i don't know how to do with it here.  */
+      return cache;
+    }
   /* ------------------- For get symbol from prologue_start---------------  */
   bl = block_for_pc (prologue_start);
   if (bl != NULL)
@@ -3312,14 +3312,23 @@ static void
 csky_check_file_abi (const char* filename)
 {
   bfd * abfd = symfile_bfd_open (filename);
-  unsigned int e_flags = elf_elfheader (abfd)->e_flags;
+  if ((strcmp ("srec", abfd->xvec->name) == 0)
+      || (strcmp ("ihex", abfd->xvec->name) == 0)
+      || (strcmp ("tekhex", abfd->xvec->name) == 0))
+    {
+      return;
+    }
+  else
+    {
+      unsigned int e_flags = elf_elfheader (abfd)->e_flags;
 #ifndef CSKYGDB_CONFIG_ABIV2
-  if ((e_flags & CSKY_ABI_MASK) == CSKY_ABI_V2)
+      if ((e_flags & CSKY_ABI_MASK) == CSKY_ABI_V2)
 #else
-  if ((e_flags & CSKY_ABI_MASK) != CSKY_ABI_V2)
+      if ((e_flags & CSKY_ABI_MASK) != CSKY_ABI_V2)
 #endif
-    error ("Fail to start debugging : file's abi is"
-           " conflict with current gdb.\n");
+        error ("Fail to start debugging : file's abi is"
+               " conflict with current gdb.\n");
+    }
 }
 
 
@@ -3335,53 +3344,122 @@ csky_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 {
   struct gdbarch *gdbarch;
   struct gdbarch_tdep *tdep;
+  struct gdbarch_list *best_arch;
+  unsigned long mach;
+  unsigned long abfd_e_flags;
   static bfd_arch_info_type bfd_csky_arch_t;
-
   /* Analysis info.target_desc.  */
   int num_pseudo_regs = 0;
   int num_regs = 0;
+  int mach_find = 0;
 
   /* "file" command interface transplantation.  */
   deprecated_exec_file_display_hook = csky_check_file_abi;
+
+/*  Get e_flags form abfd.  */
+  if (info.abfd)
+    abfd_e_flags = elf_elfheader (info.abfd)->e_flags;
 #ifndef CSKYGDB_CONFIG_ABIV2
   if (info.abfd)
     {
-     const struct bfd_arch_info *bfd_arch_info =
-                         bfd_lookup_arch (bfd_arch_csky,
-                                          elf_elfheader(info.abfd)->e_flags);
-      if (bfd_arch_info)
+      /* When the type of bfd file is srec(or any files are not elf),
+         the E_FLAGS will be not credible.  */
+      if (IS_CSKY_V1 (abfd_e_flags))
         {
-          info.bfd_arch_info = bfd_arch_info;
+          switch (abfd_e_flags & CSKY_ARCH_MASK)
+            {
+            case CSKY_ARCH_510:
+            case CSKY_ARCH_610:
+              mach = abfd_e_flags & CSKY_ARCH_MASK;
+              mach_find = 1;
+              break;
+            default:
+              mach = CSKY_ARCH_510;
+              break;
+            }
+          if (IS_CSKY_V2P (abfd_e_flags & CSKY_ARCH_MASK))
+            {
+              mach = abfd_e_flags & CSKY_ARCH_MASK;
+              mach_find = 1;
+            }
         }
       else
         {
-          memcpy (&bfd_csky_arch_t, info.bfd_arch_info,
-                  sizeof (bfd_csky_arch_t));
-          bfd_csky_arch_t.mach = elf_elfheader (info.abfd)->e_flags;
-          info.bfd_arch_info = &bfd_csky_arch_t;
+          mach = CSKY_ARCH_510;
         }
     }
-  else /* No file info, default value is CK510.  */
+  else
     {
-      memcpy (&bfd_csky_arch_t, info.bfd_arch_info, sizeof (bfd_csky_arch_t));
-      bfd_csky_arch_t.mach = CSKY_ARCH_510;
-      info.bfd_arch_info = &bfd_csky_arch_t;
+      mach = CSKY_ARCH_510;
     }
-#else
   memcpy (&bfd_csky_arch_t, info.bfd_arch_info, sizeof (bfd_csky_arch_t));
-  bfd_csky_arch_t.mach = CSKY_ARCH_810 | CSKY_ABI_V2;
+  if (mach_find)
+    bfd_csky_arch_t.mach = abfd_e_flags;
+  else
+    bfd_csky_arch_t.mach = mach | CSKY_ABI_V1;
+  info.bfd_arch_info = &bfd_csky_arch_t;
+#else
+  if (info.abfd)
+    {
+      /* When the type of bfd file is srec(or any files are not elf),
+         the E_FLAGS will be not credible.  */
+      if (IS_CSKY_V2 (abfd_e_flags))
+        {
+          switch (abfd_e_flags & CSKY_ARCH_MASK)
+            {
+            case CSKY_ARCH_801:
+            case CSKY_ARCH_802:
+            case CSKY_ARCH_803:
+            case CSKY_ARCH_803S:
+            case CSKY_ARCH_807:
+            case CSKY_ARCH_810:
+              mach = abfd_e_flags & CSKY_ARCH_MASK;
+              mach_find = 1;
+              break;
+            default:
+              mach = CSKY_ARCH_810;
+              break;
+            }
+        }
+      else
+        {
+          mach = CSKY_ARCH_810;
+        }
+    }
+  else
+    {
+      mach = CSKY_ARCH_810;
+    }
+  memcpy (&bfd_csky_arch_t, info.bfd_arch_info, sizeof (bfd_csky_arch_t));
+  if (mach_find)
+    bfd_csky_arch_t.mach = abfd_e_flags;
+  else
+    bfd_csky_arch_t.mach = mach | CSKY_ABI_V2;
   info.bfd_arch_info = &bfd_csky_arch_t;
 #endif
 
   /* If there is already a candidate, use it.  */
-  arches = gdbarch_list_lookup_by_info (arches, &info);
-  if (arches != NULL)
-    return arches->gdbarch;
+  for (best_arch = gdbarch_list_lookup_by_info (arches, &info);
+       best_arch != NULL;
+       best_arch = gdbarch_list_lookup_by_info (best_arch->next, &info))
+    {
+      if (mach != gdbarch_tdep (best_arch->gdbarch)->mach)
+        continue;
+
+      /* Found a match.  */
+      break;
+    }
+
+  if (best_arch != NULL)
+    {
+      return best_arch->gdbarch;
+    }
 
   /* Allocate space for the new architecture.  */
   tdep = XCNEW (struct gdbarch_tdep);
   tdep->lr_type_p = 0;
   tdep->return_reg = CSKY_RET_REGNUM;
+  tdep->mach = mach;
   tdep->selected_registers = csky_selected_register_p;
   gdbarch = gdbarch_alloc (&info, tdep);
 

@@ -165,7 +165,7 @@ static int csky_pctrace (char *args, unsigned int *pclist, int *depth,
                          int from_tty);
 
 /* Funtion for socket.  */
-static SOCKET socket_connect_to_server (char* hostname, char* port);
+static SOCKET socket_connect_to_server (char* hostname, const char* port);
 static int    socket_disconnet (SOCKET fd);
 static int    socket_send (SOCKET fd, void* buf, int len);
 static int    socket_receive (SOCKET fd, void* buf, int len);
@@ -522,20 +522,17 @@ csky_register_convert (int regno, struct regcache *regcache)
 {
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
 #ifndef CSKYGDB_CONFIG_ABIV2 /* FOR ABIV1 */
-  if (((gdbarch_bfd_arch_info (get_regcache_arch (regcache))->mach
-                               & CSKY_ARCH_MASK) == CSKY_ARCH_510)
-       ||
-      ((gdbarch_bfd_arch_info (get_regcache_arch (regcache))->mach
-                               & CSKY_ARCH_MASK) == CSKY_ARCH_610))
+  if (tdesc_has_registers (gdbarch_target_desc (gdbarch)))
+    return csky_target_xml_register_conversion_v1 (regno);
+
+  if (((gdbarch_tdep (get_regcache_arch (regcache))->mach) == CSKY_ARCH_510)
+      ||
+      ((gdbarch_tdep (get_regcache_arch (regcache))->mach) == CSKY_ARCH_610))
     {
-      if (tdesc_has_registers (gdbarch_target_desc (gdbarch)))
-        return csky_target_xml_register_conversion_v1 (regno);
       return csky_register_conversion_v1[regno];
     }
   else
     {
-      if (tdesc_has_registers (gdbarch_target_desc (gdbarch)))
-        return csky_target_xml_register_conversion_v2 (regno);
        return csky_register_conversion_v2[regno];
     }
 #else
@@ -554,7 +551,7 @@ csky_register_convert (int regno, struct regcache *regcache)
    SPORT   : the port number of server with decimal string.  */
 
 static SOCKET
-socket_connect_to_server (char* hostname, char* sPort)
+socket_connect_to_server (char* hostname, const char* sPort)
 {
   struct hostent *host;
   struct sockaddr_in sin;
@@ -1085,6 +1082,8 @@ const char *strdjperrorinfo[] = {
   "When accessing memory limited.\n",
   "The djp command packet format error.\n",
   "When execute one djp command error.\n",
+  "The CPU is in non-debug region now.\n",
+  "No more hardware breakpoints or watchpoints for inserting.\n",
 };
 
 /* Do with djp error and output relative messages.  */
@@ -1113,6 +1112,8 @@ djp_do_error (S32 status)
     case DJP_ADDRESS_ACCESS:     /* -24: Reserved (address access right).  */
     case DJP_COMMAND_FORMAT:     /* -25: Command format error.  */
     case DJP_COMMAND_EXECUTE:    /* -26: Command is not finished.  */
+    case DJP_NON_DEBUG_REGION:   /* -27: CPU in non-debug region.  */
+    case DJP_NO_MORE_HWBKPT_HWWP:/* -28: No more hw-bkpt or hw-watchpoint.  */
       seterrorinfo (strdjperrorinfo[-status]);
       break;
     default:
@@ -1128,7 +1129,7 @@ djp_open (const char* args)
   /* Find the socket port number.  */
   char hostname[256];
   char defaultport[8];
-  char *port = strchr (args, ':');
+  const char *port = strchr (args, ':');
   int  version[5]  = {0};
 
   DJP_DEBUG_PRINTF (("djp_open: \"%s\".\n", args));
@@ -2810,11 +2811,7 @@ struct kernel_ops* kernel_ops_array[] =
   /* The first member in the array would be NULL for the convenience of
    function implementation in file: remote-csky.c.  */
   NULL,
-  &eCos_kernel_ops
-  /*
-  &uCOS_kernel_ops
-  &uClinux_kernel_ops,
-  */
+  NULL
 };
 
 /* An array to include all the check function.
@@ -2824,11 +2821,7 @@ struct kernel_ops* kernel_ops_array[] =
 int (*check_kernel_ops_fun_array[])(void) =
 {
   NULL,
-  is_eCos_kernel_ops,
-  /*
-  is_uCOS_kernel_ops,
-  is_uClinux_kernel_ops,
-  */
+  NULL,
   NULL /* Must end with NULL.  */
 };
 
@@ -2982,14 +2975,11 @@ csky_info_mthreads_command (char* args, int from_tty)
 
 static struct target_ops* current_ops = NULL;
 static struct target_ops csky_ops;
-static struct target_ops csky_ecos_ops;
 
 
 static void csky_open  (const char *name, int from_tty);
-static void csky_ecos_open (const char *name, int from_tty);
 static void csky_close (struct target_ops *ops);
-static void csky_ecos_attach (struct target_ops *ops,
-                              const char * args, int from_tty);
+
 static void csky_detach (struct target_ops *ops,
                          const char *args, int from_tty);
 static void csky_resume (struct target_ops *ops,
@@ -3229,9 +3219,8 @@ csky_get_hw_breakpoint_num_mid (void)
 static void
 csky_get_hw_breakpoint_num_old (void)
 {
-  int mach = gdbarch_bfd_arch_info (get_current_arch ())->mach;
-  if (((mach & CSKY_ARCH_MASK)== CSKY_ARCH_803)
-      || ((mach & CSKY_ARCH_MASK)== CSKY_ARCH_802))
+  int mach = gdbarch_tdep (get_current_arch ())->mach;
+  if ((mach == CSKY_ARCH_803) || (mach == CSKY_ARCH_802))
     {
       max_hw_breakpoint_num = CSKY_MAX_HW_BREAKPOINT_WATCHPOINT_803;
     }
@@ -3256,33 +3245,6 @@ csky_open (const char *name, int from_tty)
   csky_init_gdb_state ();
   /* Get the hw_breakpoint_num of target.  */
   csky_get_hw_breakpoint_num ();
-}
-
-static void
-csky_ecos_open (const char *name, int from_tty)
-{
-  csky_target_ops_prepare (name, from_tty);
-
-  /* push target into stack, ?? current_ops maybe xxx_ops ???   */
-  current_ops = &csky_ecos_ops;
-  push_target(current_ops);
-
-  /* Choose kernel ops here.  */
-  if (!csky_choose_kernel_ops (ECOS))
-    {
-      csky_close (NULL);
-      error ("Fail to start debugging, please use csky-elf-gdb or"
-             " csky-abiv2-elf-gdb.\n");
-    }
-
-  /* Initialize current kernel ops no matter whatever.  */
-  kernel_init_thread_info (1);
-
-  /* Make sure the state is a initial state after target ecos.  */
-  current_kernel_ops->csky_target_ptid = remote_csky_ptid;
-
-  csky_init_gdb_state ();
-  csky_get_hw_breakpoint_num();
 }
 
 static void
@@ -3313,31 +3275,6 @@ csky_detach (struct target_ops *ops, const char *args, int from_tty)
     {
       printf_unfiltered ("Ending remote jtag debugging.\n");
     }
-}
-
-static void
-csky_ecos_attach (struct target_ops *ops, const char * args, int from_tty)
-{
-  int return_flag;
-  if (args)
-    {
-      warning ("csky attach command ignore all prameters.\n");
-    }
-
-  inferior_appeared (current_inferior (), ptid_get_pid (remote_csky_ptid));
-  return_flag = kernel_update_thread_info (&inferior_ptid);
-
-  if ((return_flag == NO_KERNEL_OPS) ||
-      (return_flag == NO_INIT_THREAD))
-    {
-      /* No current_kernel_ops or no multi-threads temporary.  */
-      inferior_ptid = remote_csky_ptid;
-      add_thread_silent (inferior_ptid);
-    }
-
-  reinit_frame_cache ();
-  registers_changed ();
-  stop_pc = regcache_read_pc (get_current_regcache ());
 }
 
 static void
@@ -4037,10 +3974,8 @@ csky_get_current_hw_address ()
   int is_current_insn = 0;
 
 #ifndef CSKYGDB_CONFIG_ABIV2    /* FOR ABIV1 */
-  int mach = gdbarch_bfd_arch_info (get_current_arch ())->mach;
-  if (((mach & CSKY_ARCH_MASK) == CSKY_ARCH_510)
-       || ((mach & CSKY_ARCH_MASK) == CSKY_ARCH_610)
-       || (mach == 0))
+  int mach = gdbarch_tdep (get_current_arch ())->mach;
+  if ((mach == CSKY_ARCH_510) || (mach == CSKY_ARCH_610) || (mach == 0))
     insn_version = CSKY_INSN_V1;
   else
     insn_version = CSKY_INSN_V2P;
@@ -4054,6 +3989,9 @@ csky_get_current_hw_address ()
               || b->type == bp_read_watchpoint
               || b->type == bp_access_watchpoint)
             {
+              /* When watchpoint is not within current scope, continue. */
+              if (b->disposition == disp_del_at_next_stop)
+                continue;
               /* Begin to insn analyze for one watchpoint
                  in breakpoint chain.  */
               /* Get previous insn.  */
@@ -4910,8 +4848,8 @@ csky_load (struct target_ops *self, const char *args, int from_tty)
 
 
 static void
-csky_create_inferior(struct target_ops *ops, char *execfile,
-                     char *args, char **env, int from_tty)
+csky_create_inferior (struct target_ops *ops, char *execfile,
+                      char *args, char **env, int from_tty)
 {
   CORE_ADDR entry_pt;
   TARGET_DEBUG_PRINTF (("csky_create_inferior.\n"));
@@ -4950,8 +4888,7 @@ csky_create_inferior(struct target_ops *ops, char *execfile,
 /* Check to see if a thread is still alive.  */
 
 static int
-csky_thread_alive
-(struct target_ops *ops, ptid_t ptid)
+csky_thread_alive (struct target_ops *ops, ptid_t ptid)
 {
   /* Function override from kernel_ops.  */
   if (current_kernel_ops)
@@ -5284,9 +5221,8 @@ csky_pctrace (char *args, U32 *pclist, int *depth, int from_tty)
   U32 tpclist[PCFIFO_DEPTH];
   int result;
   int i;
-  int mach = gdbarch_bfd_arch_info (get_current_arch ())->mach;
-  if (((mach & CSKY_ARCH_MASK)== CSKY_ARCH_803)
-      || ((mach & CSKY_ARCH_MASK)== CSKY_ARCH_802))
+  int mach = gdbarch_tdep (get_current_arch ())->mach;
+  if ((mach == CSKY_ARCH_803) || (mach == CSKY_ARCH_802))
     {
       warning ("CK803 & CK802 does not support pctrace function.");
       *depth = -1;
@@ -5354,48 +5290,7 @@ init_csky_ops ()
   csky_ops.to_has_execution = csky_has_execution;
   csky_ops.to_magic = OPS_MAGIC;
   csky_ops.to_mourn_inferior = csky_mourn_inferior;
-
-  /* Initialize csky_ecos_ops.  */
-  csky_ecos_ops.to_shortname = "ecos";
-  csky_ecos_ops.to_longname = "Remote ecos multi-threaded debugging";
-  csky_ecos_ops.to_doc = "Use a CSKY board via a serial line, using jtag\
- protocol.";
-  csky_ecos_ops.to_open = csky_ecos_open;
-  csky_ecos_ops.to_close = csky_close;
-  csky_ecos_ops.to_attach = csky_ecos_attach;
-  csky_ecos_ops.to_detach = csky_detach;
-  csky_ecos_ops.to_resume = csky_resume;
-  csky_ecos_ops.to_wait = csky_wait;
-  csky_ecos_ops.to_fetch_registers = csky_fetch_registers;
-  csky_ecos_ops.to_store_registers = csky_store_registers;
-  csky_ecos_ops.to_prepare_to_store = csky_prepare_to_store;
-  csky_ecos_ops.to_xfer_partial = csky_xfer_partial;
-  csky_ecos_ops.to_files_info = csky_files_info;
-  csky_ecos_ops.to_insert_breakpoint = csky_insert_breakpoint;
-  csky_ecos_ops.to_remove_breakpoint = csky_remove_breakpoint;
-  csky_ecos_ops.to_can_use_hw_breakpoint = csky_can_use_hardware_watchpoint;
-  csky_ecos_ops.to_insert_hw_breakpoint = csky_insert_hw_breakpoint;
-  csky_ecos_ops.to_remove_hw_breakpoint = csky_remove_hw_breakpoint;
-  csky_ecos_ops.to_insert_watchpoint = csky_insert_watchpoint;
-  csky_ecos_ops.to_remove_watchpoint = csky_remove_watchpoint;
-  csky_ecos_ops.to_stopped_by_watchpoint = csky_stopped_by_watchpoint;
-  csky_ecos_ops.to_stopped_data_address = csky_stopped_data_address;
-  csky_ecos_ops.to_kill = csky_kill;
-  csky_ecos_ops.to_load = csky_load;
-  csky_ecos_ops.to_create_inferior = csky_create_inferior;
-  csky_ecos_ops.to_log_command = serial_log_command;
-  csky_ecos_ops.to_thread_alive = csky_thread_alive;
-  csky_ecos_ops.to_pid_to_str = csky_pid_to_str;
-  csky_ecos_ops.to_stratum = process_stratum;
-  csky_ecos_ops.to_has_all_memory = csky_return_one;
-  csky_ecos_ops.to_has_memory = csky_return_one;
-  csky_ecos_ops.to_has_stack = csky_return_one;
-  csky_ecos_ops.to_has_registers = csky_return_one;
-  csky_ecos_ops.to_has_execution = csky_has_execution;
-  csky_ecos_ops.to_magic = OPS_MAGIC;
-  csky_ecos_ops.to_mourn_inferior = csky_mourn_inferior;
 }
-
 
 extern initialize_file_ftype _initialize_csky_jtag;
 
@@ -5408,7 +5303,6 @@ _initialize_csky_jtag (void)
   csky_ops.to_shortname = "jtag";
   add_target (&csky_ops);
 
-  add_target(&csky_ecos_ops);
   /* TODO: add reset/pctrace command.  */
   add_com ("reset", class_run, csky_reset_command,
            _("Reset remote target.\n\

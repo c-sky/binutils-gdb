@@ -647,5 +647,8 @@ extern unsigned int hardware_version;
 /* For pctrace.  */
 extern pctrace_function_type pctrace;
 
+/* Is CSKY 810p.  */
+#define IS_CSKY_V2P(mach) (mach == 0x7)
+
 #endif /* csky-tdep.h */
 

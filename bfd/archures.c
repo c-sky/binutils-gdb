@@ -937,7 +937,7 @@ bfd_set_arch_info (bfd *abfd, const bfd_arch_info_type *arg)
 }
 
 /*
-FUNCTION
+INTERNAL_FUNCTION
 	bfd_default_set_arch_mach
 
 SYNOPSIS

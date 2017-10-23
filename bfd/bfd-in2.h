@@ -263,7 +263,7 @@ struct orl 			/* Output ranlib.  */
   } u;			/* bfd* or file position.  */
   int namidx;		/* Index into string table.  */
 };
-
+
 /* Linenumber stuff.  */
 typedef struct lineno_cache_entry
 {
@@ -277,19 +277,11 @@ typedef struct lineno_cache_entry
 alent;
 
 /* Object and core file sections.  */
-typedef struct bfd_section *sec_ptr;
 
 #define	align_power(addr, align)	\
   (((addr) + ((bfd_vma) 1 << (align)) - 1) & (-((bfd_vma) 1 << (align))))
 
-/* Align an address upward to a boundary, expressed as a number of bytes.
-   E.g. align to an 8-byte boundary with argument of 8.  Take care never
-   to wrap around if the address is within boundary-1 of the end of the
-   address space.  */
-#define BFD_ALIGN(this, boundary)					  \
-  ((((bfd_vma) (this) + (boundary) - 1) >= (bfd_vma) (this))		  \
-   ? (((bfd_vma) (this) + ((boundary) - 1)) & ~ (bfd_vma) ((boundary)-1)) \
-   : ~ (bfd_vma) 0)
+typedef struct bfd_section *sec_ptr;
 
 #define bfd_get_section_name(bfd, ptr) ((void) bfd, (ptr)->name)
 #define bfd_get_section_vma(bfd, ptr) ((void) bfd, (ptr)->vma)
@@ -1436,8 +1428,8 @@ typedef struct bfd_section
      when memory read flag isn't set. */
 #define SEC_COFF_NOREAD 0x40000000
 
-  /* Indicate that section has the purecode flag set.  */
-#define SEC_ELF_PURECODE 0x80000000
+  /* Indicate that section has the no read flag set.  */
+#define SEC_ELF_NOREAD 0x80000000
 
   /*  End of section flags.  */
 
@@ -2233,6 +2225,7 @@ enum bfd_architecture
 #define bfd_mach_ck803s        6
 #define bfd_mach_ck807         7
 #define bfd_mach_ck810         8
+#define bfd_mach_ck860         9
   bfd_arch_mep,
 #define bfd_mach_mep           1
 #define bfd_mach_mep_h1        0x6831
@@ -2397,9 +2390,6 @@ const bfd_arch_info_type *bfd_arch_get_compatible
    (const bfd *abfd, const bfd *bbfd, bfd_boolean accept_unknowns);
 
 void bfd_set_arch_info (bfd *abfd, const bfd_arch_info_type *arg);
-
-bfd_boolean bfd_default_set_arch_mach
-   (bfd *abfd, enum bfd_architecture arch, unsigned long mach);
 
 enum bfd_architecture bfd_get_arch (bfd *abfd);
 
@@ -4502,6 +4492,8 @@ short offset into 11 bits.  */
   BFD_RELOC_CKCORE_NOJSRI,
   BFD_RELOC_CKCORE_CALLGRAPH,
   BFD_RELOC_CKCORE_IRELATIVE,
+  BFD_RELOC_CKCORE_PCREL_BLOOP_IMM4BY4,
+  BFD_RELOC_CKCORE_PCREL_BLOOP_IMM12BY4,
 /* CSKY RELOCATIONS END.  */
 
 /* Toshiba Media Processor Relocations.  */
@@ -7634,9 +7626,9 @@ const bfd_target *bfd_get_target_info (const char *target_name,
     const char **def_target_arch);
 const char ** bfd_target_list (void);
 
-const bfd_target *bfd_iterate_over_targets
-   (int (*func) (const bfd_target *, void *),
-    void *data);
+const bfd_target *bfd_search_for_target
+   (int (*search_func) (const bfd_target *, void *),
+    void *);
 
 const char *bfd_flavour_name (enum bfd_flavour flavour);
 

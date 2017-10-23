@@ -26,7 +26,10 @@
 #define CSKYV2_ISA_3E4      (1 << 4)
 #define CSKYV2_ISA_4E7      (1 << 5)
 #define CSKYV2_ISA_7E10     (1 << 6)
+#define CSKYV2_ISA_4E3SN    (1 << 7)
+#define CSKYV2_ISA_10E60    (1 << 8)
 
+#define CSKY_ISA_TRUST      (1 << 11)
 #define CSKY_ISA_CACHE      (1 << 12)
 #define CSKY_ISA_NVIC       (1 << 13)
 #define CSKY_ISA_CP         (1 << 14)
@@ -38,19 +41,18 @@
 /* Bacial dsp ISA for csky v1 and v2.  */
 #define CSKY_ISA_DSP        (1 << 20)
 #define CSKY_ISA_DSP_1E2    (1 << 21)
+#define CSKY_ISA_DSP_ENHANCE (1 << 22)
 
-/* DSP/FLOAT instruction.  */
-#define CSKY_ISA_DSP_FLOAT  (1 << 22)
-/* DSP/FLOAT/803s instruction.  */
-#define CSKY_ISA_DSP_FLOAT_1E2  (1 << 23)
-/* Base float instruction.  */
-#define CSKY_ISA_FLOAT_E1   (1 << 24)
-/* M_FLOAT support.  */
-#define CSKY_ISA_FLOAT_1E2  (1 << 25)
-/* 803s support.  */
-#define CSKY_ISA_FLOAT_1E3  (1 << 26)
-/* 807 support.  */
-#define CSKY_ISA_FLOAT_3E4  (1 << 27)
+/* Base float instruction(803sf & 810f).  */
+#define CSKY_ISA_FLOAT_E1   (1 << 25)
+/* M_FLOAT support(810f).  */
+#define CSKY_ISA_FLOAT_1E2  (1 << 26)
+/* 803s support(803sf).  */
+#define CSKY_ISA_FLOAT_1E3  (1 << 27)
+/* 807 support(803sf & 807f).  */
+#define CSKY_ISA_FLOAT_3E4  (1 << 28)
+/* Vector DSP support.  */
+#define CSKY_ISA_VDSP       (1 << 29)
 
 /* The following bitmask control cpu architecture for CSKY.  */
 #define CSKY_ABI_V1         (1 << 28)
@@ -66,6 +68,7 @@
 #define CSKY_ARCH_803S      0x9
 #define CSKY_ARCH_807       0x6
 #define CSKY_ARCH_810       0x8
+#define CSKY_ARCH_860       0xb
 
 #define CSKY_ARCH_MAC       (1 << 15)
 #define CSKY_ARCH_DSP       (1 << 14)

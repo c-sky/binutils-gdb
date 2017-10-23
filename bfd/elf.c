@@ -3870,44 +3870,6 @@ sym_is_global (bfd *abfd, asymbol *sym)
 	  || bfd_is_com_section (bfd_get_section (sym)));
 }
 
-/* Filter global symbols of ABFD to include in the import library.  All
-   SYMCOUNT symbols of ABFD can be examined from their pointers in
-   SYMS.  Pointers of symbols to keep should be stored contiguously at
-   the beginning of that array.
-
-   Returns the number of symbols to keep.  */
-
-unsigned int
-_bfd_elf_filter_global_symbols (bfd *abfd, struct bfd_link_info *info,
-				asymbol **syms, long symcount)
-{
-  long src_count, dst_count = 0;
-
-  for (src_count = 0; src_count < symcount; src_count++)
-    {
-      asymbol *sym = syms[src_count];
-      char *name = (char *) bfd_asymbol_name (sym);
-      struct bfd_link_hash_entry *h;
-
-      if (!sym_is_global (abfd, sym))
-	continue;
-
-      h = bfd_link_hash_lookup (info->hash, name, FALSE, FALSE, FALSE);
-      if (h == NULL)
-	continue;
-      if (h->type != bfd_link_hash_defined && h->type != bfd_link_hash_defweak)
-	continue;
-      if (h->linker_def || h->ldscript_def)
-	continue;
-
-      syms[dst_count++] = sym;
-    }
-
-  syms[dst_count] = NULL;
-
-  return dst_count;
-}
-
 /* Don't output section symbols for sections that are not going to be
    output, that are duplicates or there is no BFD section.  */
 
@@ -5272,9 +5234,7 @@ assign_file_positions_for_load_sections (bfd *abfd,
 	  p->p_memsz = bed->s->sizeof_ehdr;
 	  if (m->count > 0)
 	    {
-	      if (p->p_vaddr < (bfd_vma) off
-		  || (!m->p_paddr_valid
-		      && p->p_paddr < (bfd_vma) off))
+	      if (p->p_vaddr < (bfd_vma) off)
 		{
 		  (*_bfd_error_handler)
 		    (_("%B: Not enough room for program headers, try linking with -N"),
@@ -7644,9 +7604,7 @@ error_return:
 		     section of a symbol to be a section that is
 		     actually in the output file.  */
 		  sec2 = bfd_get_section_by_name (abfd, sec->name);
-		  if (sec2 != NULL)
-		    shndx = _bfd_elf_section_from_bfd_section (abfd, sec2);
-		  if (shndx == SHN_BAD)
+		  if (sec2 == NULL)
 		    {
 		      _bfd_error_handler (_("\
 Unable to find equivalent output section for symbol '%s' from section '%s'"),
@@ -7655,6 +7613,9 @@ Unable to find equivalent output section for symbol '%s' from section '%s'"),
 		      bfd_set_error (bfd_error_invalid_operation);
 		      goto error_return;
 		    }
+
+		  shndx = _bfd_elf_section_from_bfd_section (abfd, sec2);
+		  BFD_ASSERT (shndx != SHN_BAD);
 		}
 	    }
 
@@ -9590,34 +9551,25 @@ elfcore_grok_freebsd_psinfo (bfd *abfd, Elf_Internal_Note *note)
 {
   size_t offset;
 
-  switch (abfd->arch_info->bits_per_word)
-    {
-    case 32:
-      if (note->descsz < 108)
-	return FALSE;
-      break;
-
-    case 64:
-      if (note->descsz < 120)
-	return FALSE;
-      break;
-
-    default:
-      return FALSE;
-    }
-
-  /* Check for version 1 in pr_version.  */
+  /* Check for version 1 in pr_version. */
   if (bfd_h_get_32 (abfd, (bfd_byte *) note->descdata) != 1)
     return FALSE;
   offset = 4;
 
   /* Skip over pr_psinfosz. */
-  if (abfd->arch_info->bits_per_word == 32)
-    offset += 4;
-  else
+  switch (abfd->arch_info->bits_per_word)
     {
+    case 32:
+      offset += 4;
+      break;
+
+    case 64:
       offset += 4;	/* Padding before pr_psinfosz. */
       offset += 8;
+      break;
+
+    default:
+      return FALSE;
     }
 
   /* pr_fname is PRFNAMESZ (16) + 1 bytes in size.  */
@@ -9628,17 +9580,6 @@ elfcore_grok_freebsd_psinfo (bfd *abfd, Elf_Internal_Note *note)
   /* pr_psargs is PRARGSZ (80) + 1 bytes in size.  */
   elf_tdata (abfd)->core->command
     = _bfd_elfcore_strndup (abfd, note->descdata + offset, 81);
-  offset += 81;
-
-  /* Padding before pr_pid.  */
-  offset += 2;
-
-  /* The pr_pid field was added in version "1a".  */
-  if (note->descsz < offset + 4)
-    return TRUE;
-
-  elf_tdata (abfd)->core->pid
-    = bfd_h_get_32 (abfd, (bfd_byte *) note->descdata + offset);
 
   return TRUE;
 }
