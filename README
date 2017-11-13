@@ -1,9 +1,9 @@
 		   Configure for csky binutils
 
 Basic configuration:
-  ./configure [HOST_TARGET] --target=[TARGET] --disable-werror  --prefix=[PREFIX] 
+  ./configure [HOST_TARGET] --target=[TARGET] --disable-werror  --prefix=[PREFIX] --with-sysroot=yes
 HOST_TARGET is the host to execute binutils, such as x86_64-linux.
-TARGET can choose one of csky-abiv2-linux,csky-abiv2-elf,csky-linux,csky-elf. If building linux tools, add --with-sysroot=yes.
+TARGET can choose one of csky-abiv2-linux,csky-linux.
 		   
 		   README for GNU development tools
 
