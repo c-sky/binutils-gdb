@@ -176,12 +176,12 @@ case ${generic_target} in
 
   crx-*-elf*)				fmt=elf ;;
 
-  csky-unknown-elf)			fmt=elf em=csky_abiv1 ;;
-  csky-abiv2-elf)			fmt=elf em=csky_abiv2 ;;
-  csky-unknown-linux*)		fmt=elf em=csky_abiv1_linux ;;
-  csky-abiv2-linux*)		fmt=elf em=csky_abiv2_linux ;;
-  csky-*-ecos-*)			fmt=elf ;;
-  csky-*-uclinux-*)			fmt=elf ;;
+  csky*-elfabiv2)			fmt=elf em=csky_abiv2 ;;
+  csky*-elf)			fmt=elf em=csky_abiv1 ;;
+  csky*-linux*abiv2)		fmt=elf em=csky_abiv2_linux ;;
+  csky*-linux*)		fmt=elf em=csky_abiv1_linux ;;
+  csky*-ecos*)			fmt=elf ;;
+  csky*-uclinux*)			fmt=elf ;;
 
   d10v-*-*)				fmt=elf ;;
   d30v-*-*)				fmt=elf ;;
