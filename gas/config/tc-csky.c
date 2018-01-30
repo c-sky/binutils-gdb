@@ -5058,6 +5058,7 @@ md_apply_fix (fixS   *fixP,
               ta = (struct tls_addend*)(fixP->fx_offset);
               fixP->fx_offset= (fixP->fx_frag->fr_address + fixP->fx_where)
                                 - (ta->frag->fr_address + ta->offset);
+              *valP = fixP->fx_offset;
            }
          case BFD_RELOC_CKCORE_TLS_LE32:
          case BFD_RELOC_CKCORE_TLS_LDO32:
@@ -5117,6 +5118,7 @@ md_apply_fix (fixS   *fixP,
           ta = (struct tls_addend*)(fixP->fx_offset);
           fixP->fx_offset= (fixP->fx_frag->fr_address + fixP->fx_where)
                              - (ta->frag->fr_address + ta->offset);
+          *valP = fixP->fx_offset;
         }
       case BFD_RELOC_CKCORE_TLS_LE32:
       case BFD_RELOC_CKCORE_TLS_LDO32:
