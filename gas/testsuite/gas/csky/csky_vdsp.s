@@ -405,3 +405,9 @@ vdsp_instructions:
     vshri.s16.r      vr0, vr2, 31
     vshri.s32.r      vr0, vr2, 0
     vshri.s32.r      vr0, vr2, 31
+    vins.8           vr0[0], vr15[15]
+    vins.8           vr15[15], vr0[0]
+    vins.16          vr0[0], vr15[15]
+    vins.16          vr15[15], vr0[0]
+    vins.32          vr0[0], vr15[15]
+    vins.32          vr15[15], vr0[0]

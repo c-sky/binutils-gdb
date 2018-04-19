@@ -398,6 +398,10 @@ enum SHT
   SHT_ARM_DEBUGOVERLAY = 0x70000004,
   SHT_ARM_OVERLAYSECTION = 0x70000005,
 
+  // CSKY-specific section types.
+  // Object file compatibility attributes.
+  SHT_CSKY_ATTRIBUTES = 0x70000001,
+
   // x86_64 unwind information.
   SHT_X86_64_UNWIND = 0x70000001,
 

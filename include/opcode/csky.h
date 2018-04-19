@@ -26,7 +26,8 @@
 #define CSKYV2_ISA_3E7      (1 << 4)
 #define CSKYV2_ISA_7E10     (1 << 5)
 #define CSKYV2_ISA_3E3R1    (1 << 6)
-#define CSKYV2_ISA_10E60    (1 << 7)
+#define CSKYV2_ISA_3E3R2    (1 << 7)
+#define CSKYV2_ISA_10E60    (1 << 8)
 
 #define CSKY_ISA_TRUST      (1 << 11)
 #define CSKY_ISA_CACHE      (1 << 12)

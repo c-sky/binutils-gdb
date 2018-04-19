@@ -786,6 +786,7 @@ ihex_write_object_contents (bfd *abfd)
 	    {
 	      bfd_byte addr[2];
 
+#ifndef __TARGET_CSKY__
 	      /* We need a new base address.  */
 	      if (where <= 0xfffff)
 		{
@@ -799,6 +800,7 @@ ihex_write_object_contents (bfd *abfd)
 		    return FALSE;
 		}
 	      else
+#endif // __TARGET_CSKY__
 		{
 		  /* The extended address record and the extended
                      linear address record are combined, at least by
@@ -806,6 +808,7 @@ ihex_write_object_contents (bfd *abfd)
                      record here, so if we've already written out an
                      extended address record, zero it out to avoid
                      confusion.  */
+#ifndef __TARGET_CSKY__
 		  if (segbase != 0)
 		    {
 		      addr[0] = 0;
@@ -814,6 +817,7 @@ ihex_write_object_contents (bfd *abfd)
 			return FALSE;
 		      segbase = 0;
 		    }
+#endif // __TARGET_CSKY__
 
 		  extbase = where & 0xffff0000;
 		  if (where > extbase + 0xffff)
@@ -856,6 +860,7 @@ ihex_write_object_contents (bfd *abfd)
 
       start = abfd->start_address;
 
+#ifndef __TARGET_CSKY__
       if (start <= 0xfffff)
 	{
 	  startbuf[0] = (bfd_byte)((start & 0xf0000) >> 12) & 0xff;
@@ -866,6 +871,7 @@ ihex_write_object_contents (bfd *abfd)
 	    return FALSE;
 	}
       else
+#endif // __TARGET_CSKY__
 	{
 	  startbuf[0] = (bfd_byte)(start >> 24) & 0xff;
 	  startbuf[1] = (bfd_byte)(start >> 16) & 0xff;

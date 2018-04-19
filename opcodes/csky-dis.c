@@ -36,6 +36,7 @@ enum sym_type
   CUR_TEXT,
   CUR_DATA
 };
+
 struct csky_dis_info
 {
   /* Mem to disassemble.  */

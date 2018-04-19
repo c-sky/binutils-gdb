@@ -93,6 +93,29 @@ START_RELOC_NUMBERS (elf_csky_reloc_type)
     RELOC_NUMBER(R_CKCORE_PCREL_BLOOP_IMM12BY4, 64)
 END_RELOC_NUMBERS (R_CKCORE_MAX)
 
+/* Additional section types.  */
+#define SHT_CSKY_ATTRIBUTES       0x70000001 /* Section holds attributes.  */
+
+/* Object attribute tags.  */
+enum
+{
+  /* 0-3 are generic. */
+  /* Arch name for this object file.  */
+  Tag_CSKY_ARCH_NAME = 5,
+  Tag_CSKY_CPU_NAME = 6,
+  /* CSKY DSP version used by this object file.  */
+  Tag_CSKY_DSP_VERSION = 7,
+};
+
+/* Object attribute values.  */
+enum
+{
+  /* Values defined for Tag_GNU_CSKY_DSP_VERSION.  */
+  Val_GNU_CSKY_DSP_VERSION_1 = 1,
+  Val_GNU_CSKY_DSP_VERSION_2 = 2,
+  Val_GNU_CSKY_DSP_VERSION_3 = 3,
+};
+
 #endif /* _ELF_CSKY_H  */
 
 

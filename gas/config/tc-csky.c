@@ -411,6 +411,7 @@ static void csky_lrw (void);
 
 static int parse_cpu(const char *str);
 static int parse_arch (const char *str);
+static int csky_get_reg_val (char *str, int *len);
 
 static enum bfd_reloc_code_real insn_reloc;
 
@@ -730,6 +731,7 @@ const struct _csky_cpu csky_cpus[] =
   /* CK803 series.  */
 #define CSKY_ISA_803    (CSKY_ISA_802 | CSKYV2_ISA_2E3 | CSKY_ISA_MP)
 #define CSKY_ISA_803R1  (CSKY_ISA_803 | CSKYV2_ISA_3E3R1)
+#define CSKY_ISA_803R2  (CSKY_ISA_803 | CSKYV2_ISA_3E3R1 | CSKYV2_ISA_3E3R2)
 #define CSKY_ISA_FLOAT_803 (CSKY_ISA_FLOAT_E1 | CSKY_ISA_FLOAT_1E3)
   {"ck803", CSKY_ARCH_803, CSKY_ISA_803 , "-mcpu=ck803"},
   {"ck803h", CSKY_ARCH_803, CSKY_ISA_803 , "-mcpu=ck803h"},
@@ -761,6 +763,21 @@ const struct _csky_cpu csky_cpus[] =
   {"ck803ftr1", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803ftr1"},
   {"ck803eftr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803eftr1"},
   {"ck803efhtr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803efhtr1"},
+  {"ck803r2", CSKY_ARCH_803, CSKY_ISA_803R2, "-mcpu=ck803r2"},
+  {"ck803hr2", CSKY_ARCH_803, CSKY_ISA_803R2 , "-mcpu=ck803hr2"},
+  {"ck803tr2", CSKY_ARCH_803, CSKY_ISA_803R2 | CSKY_ISA_TRUST, "-mcpu=ck803tr2"},
+  {"ck803htr2", CSKY_ARCH_803, CSKY_ISA_803R2 | CSKY_ISA_TRUST, "-mcpu=ck803htr2"},
+  {"ck803fr2", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803R2 | CSKY_ISA_FLOAT_803, "-mcpu=ck803fr2"},
+  {"ck803fhr2", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803R2 | CSKY_ISA_FLOAT_803, "-mcpu=ck803fhr2"},
+  {"ck803er2", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R2 | CSKY_ISA_DSP_ENHANCE, "-mcpu=ck803er2"},
+  {"ck803ehr2", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R2 | CSKY_ISA_DSP_ENHANCE, "-mcpu=ck803ehr2"},
+  {"ck803etr2", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R2 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_TRUST, "-mcpu=ck803etr2"},
+  {"ck803ehtr2", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R2 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_TRUST, "-mcpu=ck803ehtr2"},
+  {"ck803efr2", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R2 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803, "-mcpu=ck803efr2"},
+  {"ck803efhr2", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R2 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803, "-mcpu=ck803efhr2"},
+  {"ck803ftr2", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803R2 | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803ftr2"},
+  {"ck803eftr2", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R2 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803eftr2"},
+  {"ck803efhtr2", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R2 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803efhtr2"},
 
   {"ck803s", CSKY_ARCH_803, CSKY_ISA_803R1 , "-mcpu=ck803s"},
   {"ck803se", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R1 | CSKYV2_ISA_DSP, "-mcpu=ck803se"},
@@ -787,6 +804,7 @@ const struct _csky_cpu csky_cpus[] =
   {"ck810", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP, "-mcpu=ck810"},
   {"ck810v", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_VDSP, "-mcpu=ck810v"},
   {"ck810f", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_810, "-mcpu=ck810f"},
+  {"ck810fv", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_810 | CSKY_ISA_VDSP, "-mcpu=ck810fv"},
   {"ck810t", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_TRUST, "-mcpu=ck810t"},
   {"ck810tv", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_VDSP | CSKY_ISA_TRUST, "-mcpu=ck810tv"},
   {"ck810ft", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_810 | CSKY_ISA_TRUST, "-mcpu=ck810ft"},
@@ -1861,6 +1879,8 @@ md_begin (void)
     {
       if ((mach_flag & CSKY_ARCH_MASK) == (p_arch->_arch_flag & CSKY_ARCH_MASK))
         {
+          bfd_elf_add_obj_attr_string (stdoutput, OBJ_ATTR_PROC,
+                                       Tag_CSKY_ARCH_NAME, p_arch->name);
           bfd_mach_flag =  p_arch->_bfd_mach_flag;
           break;
         }
@@ -1870,6 +1890,8 @@ md_begin (void)
     {
       if ((mach_flag & CPU_ARCH_MASK)== p_cpu->_mach_flag)
         {
+          bfd_elf_add_obj_attr_string (stdoutput, OBJ_ATTR_PROC,
+                                       Tag_CSKY_CPU_NAME, p_cpu->name);
           isa_flag |= p_cpu->_isa_flag;
           break;
         }
@@ -1883,8 +1905,20 @@ md_begin (void)
         {
           if ((dsp_flag & CSKY_DSP_FLAG_V1))
             {
-              isa_flag |= (CSKY_ISA_MAC_DSP | CSKY_ISA_DSP);
-              isa_flag &= ~CSKY_ISA_DSP_ENHANCE;
+              if (isa_flag & CSKY_ISA_DSP_ENHANCE)
+                {
+                  /* Option -mdsp is conflict -mcpu=ck803ern.
+                     Option -mcpu already indicates -medsp. */
+                  as_warn ("Option -mdsp is conflict with -mcpu=ck803ern which "
+                           "already indicates -medsp, ignore -mdsp here");
+                  isa_flag &= ~(CSKY_ISA_MAC_DSP | CSKY_ISA_DSP);
+                  isa_flag |= CSKY_ISA_DSP_ENHANCE;
+                }
+              else
+                {
+                  isa_flag |= (CSKY_ISA_MAC_DSP | CSKY_ISA_DSP);
+                  isa_flag &= ~CSKY_ISA_DSP_ENHANCE;
+                }
             }
 
           if ((dsp_flag & CSKY_DSP_FLAG_V2))
@@ -1897,7 +1931,7 @@ md_begin (void)
               && (dsp_flag & CSKY_DSP_FLAG_V2))
             {
               /* In 803, dspv1 is conflict with dspv2. We keep dspv2.  */
-              as_warn ("Option -mdsp is conflit with -medsp, only enable -medsp here");
+              as_warn ("Option -mdsp is conflict with -medsp, only enable -medsp here");
               isa_flag &= ~(CSKY_ISA_MAC_DSP | CSKY_ISA_DSP);
               isa_flag |= CSKY_ISA_DSP_ENHANCE;
             }
@@ -1938,7 +1972,8 @@ md_begin (void)
       if (!do_use_branchstub
           && (IS_CSKY_ARCH_V1 (mach_flag)
               || ((CSKY_ARCH_MASK & mach_flag) == CSKY_ARCH_810)
-              || ((CSKY_ARCH_MASK & mach_flag) == CSKY_ARCH_807)))
+              || ((CSKY_ARCH_MASK & mach_flag) == CSKY_ARCH_807)
+              || ((CSKY_ARCH_MASK & mach_flag) == CSKY_ARCH_860)))
         {
           do_force2bsr = 0;
         }
@@ -2178,6 +2213,7 @@ is_reg_sp_with_bracket (char **oper)
   const char **regs;
   int sp_idx;
   int len;
+  int reg;
   if (IS_CSKY_V1 (mach_flag))
       sp_idx = 0;
   else
@@ -2186,37 +2222,22 @@ is_reg_sp_with_bracket (char **oper)
   if (**oper != '(')
       return FALSE;
   *oper += 1;
-  regs = csky_general_reg;
-  len = strlen (regs[sp_idx]);
-  if (memcmp (*oper, regs[sp_idx], len) == 0)
+
+  reg = csky_get_reg_val(*oper, &len);
+  *oper += len;
+  if (reg == sp_idx)
     {
-      *oper += len;
       if (**oper != ')')
         {
+          SET_ERROR_NUMBER (ERROR_UNDEFINE, "Operand format is error. '(sp)' expected");
           return FALSE;
         }
       *oper += 1;
       csky_insn.val[csky_insn.idx++] = sp_idx;
       return TRUE;
     }
-  else
-    {
-      if (IS_CSKY_V1 (mach_flag))
-        regs = cskyv1_general_alias_reg;
-      else
-        regs = cskyv2_general_alias_reg;
-      len = strlen (regs[sp_idx]);
-      if (memcmp (*oper, regs[sp_idx], len) == 0)
-        {
-          *oper += len;
-          if (**oper != ')')
-            {
-              return FALSE;
-            }
-          *oper += 1;
-          return TRUE;
-        }
-    }
+
+  SET_ERROR_NUMBER (ERROR_UNDEFINE, "Operand format is error. '(sp)' expected");
   return FALSE;
 }
 
@@ -2466,9 +2487,9 @@ is_reglist_legal (char **oper)
 
   if (reg2 == -1
       || (IS_CSKY_V1(mach_flag)
-          && (reg1 == 15)))
+          && (reg2 != 15)))
     {
-      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The operand format must be r15 in C-SKY V1");
+      SET_ERROR_NUMBER(ERROR_REG_FORMAT, (void *)"The operand format must be rx-r15");
       return FALSE;
     }
   if (IS_CSKY_V2(mach_flag))
@@ -2899,6 +2920,7 @@ parse_ldst_imm (char **oper, struct _csky_opcode_info *op ATTRIBUTE_UNUSED, stru
   if (e.X_op != O_constant)
     {
       /* Not a constant.  */
+      SET_ERROR_NUMBER(ERROR_UNDEFINE, (void *)"Operand format is error. eg. \"ld rz, (rx, n)\"");
       return FALSE;
     }
   else if (e.X_add_number < 0 || e.X_add_number >= max)
@@ -4352,51 +4374,52 @@ md_parse_option (int c, const char * arg)
   int ret = 0;
   switch (c)
     {
-      default:
-        {
-          for (i = 0; csky_opts[i].name != NULL; i++)
-            {
-              if (arg != NULL
-                  && memcmp(arg - 1, csky_opts[i].name,
-                         strlen(arg-1)) == 0
-                  && !ISALPHA(*(arg - 1 + strlen(csky_opts[i].name))))
-                {
-                  if (csky_opts[i].ver)
-                    {
-                      switch (csky_opts[i].operation)
-                        {
-                          case OPTS_OPERATION_ASSIGN:
-                            *(csky_opts[i].ver) = csky_opts[i].value;
-                            ret = 1;
-                            break;
-                          case OPTS_OPERATION_OR:
-                            *(csky_opts[i].ver) |= csky_opts[i].value;
-                            ret = 1;
-                            break;
-                          default:
-                            break;
-                        }
-                    }
-                  return ret;
-                }
-            }
-          for (i = 0; csky_long_opts[i].name != NULL; i++)
-            {
-              if (memcmp(arg - 1, csky_long_opts[i].name,
-                         strlen(csky_long_opts[i].name)) == 0)
-                {
-                  if (csky_long_opts[i].func)
-                    {
-                      if (csky_long_opts[i].func(arg - 1 + strlen(csky_long_opts[i].name)))
-                        {
-                          return 0;
-                        }
-                    }
-                  return 1;
-                }
-            }
-          break;
-        }
+    default:
+      {
+        for (i = 0; csky_opts[i].name != NULL; i++)
+          {
+            if (arg != NULL
+                && memcmp(arg - 1, csky_opts[i].name,
+                       strlen(arg-1)) == 0
+                && !ISALPHA(*(arg - 1 + strlen(csky_opts[i].name))))
+              {
+                if (csky_opts[i].ver)
+                  {
+                    switch (csky_opts[i].operation)
+                      {
+                        case OPTS_OPERATION_ASSIGN:
+                          *(csky_opts[i].ver) = csky_opts[i].value;
+                          ret = 1;
+                          break;
+                        case OPTS_OPERATION_OR:
+                          *(csky_opts[i].ver) |= csky_opts[i].value;
+                          ret = 1;
+                          break;
+                        default:
+                          break;
+                      }
+                  }
+                return ret;
+              }
+          }
+        for (i = 0; csky_long_opts[i].name != NULL; i++)
+          {
+            if (arg != NULL
+                && memcmp(arg - 1, csky_long_opts[i].name,
+                          strlen(csky_long_opts[i].name)) == 0)
+              {
+                if (csky_long_opts[i].func)
+                  {
+                    if (csky_long_opts[i].func(arg - 1 + strlen(csky_long_opts[i].name)))
+                      {
+                        return 0;
+                      }
+                  }
+                return 1;
+              }
+          }
+        break;
+      }
       /* The following case are defined in md_longopts.  */
     }
   return 0;
@@ -5131,6 +5154,7 @@ md_apply_fix (fixS   *fixP,
               ta = (struct tls_addend*)(fixP->fx_offset);
               fixP->fx_offset= (fixP->fx_frag->fr_address + fixP->fx_where)
                                 - (ta->frag->fr_address + ta->offset);
+              *valP = fixP->fx_offset;
            }
          case BFD_RELOC_CKCORE_TLS_LE32:
          case BFD_RELOC_CKCORE_TLS_LDO32:
@@ -5194,6 +5218,7 @@ md_apply_fix (fixS   *fixP,
           ta = (struct tls_addend*)(fixP->fx_offset);
           fixP->fx_offset= (fixP->fx_frag->fr_address + fixP->fx_where)
                              - (ta->frag->fr_address + ta->offset);
+          *valP = fixP->fx_offset;
         }
       case BFD_RELOC_CKCORE_TLS_LE32:
       case BFD_RELOC_CKCORE_TLS_LDO32:
@@ -6435,7 +6460,7 @@ v2_work_subi (void)
   if (csky_insn.number == 2)
     {
       if (csky_insn.val[0] == 14
-          && (csky_insn.val[1] >=0 && csky_insn.val[2] <= 0x1fc)
+          && (csky_insn.val[1] >=0 && csky_insn.val[1] <= 0x1fc)
           && ((csky_insn.val[1] & 0x3) == 0)
           && csky_insn.flag_force != INSN_OPCODE32F)
         {

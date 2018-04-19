@@ -22,6 +22,7 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*c1809420\s*dcache.ciall
 \s*[0-9a-f]*:\s*c0df9420\s*dcache.csw\s*r31
 \s*[0-9a-f]*:\s*c0ff9420\s*dcache.cva\s*r31
+\s*[0-9a-f]*:\s*c2ff9420\s*dcache.cval1\s*r31
 \s*[0-9a-f]*:\s*c0809420\s*dcache.call
 \s*[0-9a-f]*:\s*c15f9420\s*dcache.isw\s*r31
 \s*[0-9a-f]*:\s*c17f9420\s*dcache.iva\s*r31

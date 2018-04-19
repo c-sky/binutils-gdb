@@ -5491,6 +5491,27 @@ csky_elf_grok_psinfo (bfd *abfd, Elf_Internal_Note *note)
   return TRUE;
 }
 
+/* Determine whether an object attribute tag takes an integer, a
+   string or both.  */
+static int
+elf32_csky_obj_attrs_arg_type (int tag)
+{
+  if (tag == Tag_compatibility)
+    return ATTR_TYPE_FLAG_INT_VAL | ATTR_TYPE_FLAG_STR_VAL;
+  else if (tag == Tag_CSKY_ARCH_NAME || tag == Tag_CSKY_CPU_NAME)
+    return ATTR_TYPE_FLAG_STR_VAL;
+
+  else
+    return (tag & 1) != 0 ? ATTR_TYPE_FLAG_STR_VAL : ATTR_TYPE_FLAG_INT_VAL;
+}
+
+/* Attribute numbers >=64 (mod 128) can be safely ignored.  */
+static bfd_boolean
+elf32_csky_obj_attrs_handle_unknown (bfd *abfd, int tag)
+{
+  return TRUE;
+}
+
 /* End of external entry points for sizing and building linker stubs.  */
 
 /* CPU related basical API. */
@@ -5511,6 +5532,18 @@ csky_elf_grok_psinfo (bfd *abfd, Elf_Internal_Note *note)
 #define bfd_elf32_bfd_merge_private_bfd_data  csky_elf_merge_private_bfd_data
 #define bfd_elf32_bfd_set_private_flags       csky_elf_set_private_flags
 #define elf_backend_copy_indirect_symbol      csky_elf_copy_indirect_symbol
+
+/* Attribute sections.  */
+#undef  elf_backend_obj_attrs_vendor
+#define elf_backend_obj_attrs_vendor          "csky"
+#undef  elf_backend_obj_attrs_section
+#define elf_backend_obj_attrs_section         ".csky.attributes"
+#undef  elf_backend_obj_attrs_arg_type
+#define elf_backend_obj_attrs_arg_type        elf32_csky_obj_attrs_arg_type
+#undef  elf_backend_obj_attrs_section_type
+#define elf_backend_obj_attrs_section_type    SHT_CSKY_ATTRIBUTES
+#define elf_backend_obj_attrs_handle_unknown  elf32_csky_obj_attrs_handle_unknown
+
 
 /* GC section related API.  */
 #define elf_backend_can_gc_sections           1

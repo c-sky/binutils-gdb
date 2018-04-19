@@ -3934,6 +3934,18 @@ get_arm_section_type_name (unsigned int sh_type)
 }
 
 static const char *
+get_csky_section_type_name (unsigned int sh_type)
+{
+  switch (sh_type)
+    {
+    case SHT_CSKY_ATTRIBUTES:      return "CSKY_ATTRIBUTES";
+    default:
+      break;
+    }
+  return NULL;
+}
+
+static const char *
 get_tic6x_section_type_name (unsigned int sh_type)
 {
   switch (sh_type)
@@ -4047,6 +4059,9 @@ get_section_type_name (unsigned int sh_type)
 	    case EM_ARM:
 	      result = get_arm_section_type_name (sh_type);
 	      break;
+	    case EM_CSKY:
+        result = get_csky_section_type_name (sh_type);
+        break;
 	    case EM_TI_C6000:
 	      result = get_tic6x_section_type_name (sh_type);
 	      break;
@@ -13191,6 +13206,29 @@ display_arm_attribute (unsigned char * p,
 }
 
 static unsigned char *
+display_csky_attribute (unsigned char * p,
+		       const unsigned char * const end)
+{
+  unsigned int tag;
+  unsigned int len;
+  tag = read_uleb128 (p, &len, end);
+  p += len;
+
+  if (tag == Tag_CSKY_ARCH_NAME)
+    {
+      printf ("  Tag_CSKY_ARCH_NAME: ");
+      return display_tag_value (-1, p, end);
+    }
+  else if (tag == Tag_CSKY_CPU_NAME)
+    {
+      printf ("  Tag_CSKY_CPU_NAME: ");
+      return display_tag_value (-1, p, end);
+    }
+
+  return p;
+}
+
+static unsigned char *
 display_gnu_attribute (unsigned char * p,
 		       unsigned char * (* display_proc_gnu_attribute) (unsigned char *, int, const unsigned char * const),
 		       const unsigned char * const end)
@@ -14132,6 +14170,13 @@ process_arm_specific (FILE * file)
 {
   return process_attributes (file, "aeabi", SHT_ARM_ATTRIBUTES,
 			     display_arm_attribute, NULL);
+}
+
+static int
+process_csky_specific (FILE * file)
+{
+  return process_attributes (file, "csky", SHT_CSKY_ATTRIBUTES,
+			     display_csky_attribute, NULL);
 }
 
 static int
@@ -16211,6 +16256,8 @@ process_arch_specific (FILE * file)
     {
     case EM_ARM:
       return process_arm_specific (file);
+    case EM_CSKY:
+      return process_csky_specific (file);
     case EM_MIPS:
     case EM_MIPS_RS3_LE:
       return process_mips_specific (file);

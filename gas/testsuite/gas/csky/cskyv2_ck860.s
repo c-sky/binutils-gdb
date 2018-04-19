@@ -15,6 +15,7 @@ ck860:
      dcache.ciall
      dcache.csw r31
      dcache.cva r31
+     dcache.cval1 r31
      dcache.call
      dcache.isw r31
      dcache.iva r31

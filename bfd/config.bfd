@@ -438,6 +438,7 @@ case "${targ}" in
   csky*-elf* | csky*-linux* | csky*-uclinux* | csky*-ecos* )
     targ_defvec=csky_elf32_be_vec
     targ_selvecs="csky_elf32_be_vec csky_elf32_le_vec"
+    targ_cflags=-D__TARGET_CSKY__
     ;;
 
   d10v-*-*)

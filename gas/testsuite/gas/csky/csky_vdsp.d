@@ -410,3 +410,9 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*f9f20670\s*vshri.s16.r\s*vr0,\s*vr2,\s*31
 \s*[0-9a-f]*:\s*fa020650\s*vshri.s32.r\s*vr0,\s*vr2,\s*0
 \s*[0-9a-f]*:\s*fbe20670\s*vshri.s32.r\s*vr0,\s*vr2,\s*31
+\s*[0-9a-f]*:\s*f9ef1400\s*vins.8\s*vr0\[0\],\s*vr15\[15\]
+\s*[0-9a-f]*:\s*f80015ef\s*vins.8\s*vr15\[15\],\s*vr0\[0\]
+\s*[0-9a-f]*:\s*f9ff1400\s*vins.16\s*vr0\[0\],\s*vr15\[15\]
+\s*[0-9a-f]*:\s*f81015ef\s*vins.16\s*vr15\[15\],\s*vr0\[0\]
+\s*[0-9a-f]*:\s*fbef1400\s*vins.32\s*vr0\[0\],\s*vr15\[15\]
+\s*[0-9a-f]*:\s*fa0015ef\s*vins.32\s*vr15\[15\],\s*vr0\[0\]

@@ -364,6 +364,7 @@ struct _csky_opcode
 #define OPRND_MASK_21_25            0x3e00000
 #define OPRND_MASK_25               0x2000000
 #define OPRND_MASK_RSV              0xffffffff
+#define OPRND_MASK_0_3or5_8         OPRND_MASK_0_3 | OPRND_MASK_5_8
 #define OPRND_MASK_0_3or21_24       OPRND_MASK_0_3 | OPRND_MASK_21_24
 #define OPRND_MASK_0_4or21_25       OPRND_MASK_0_4 | OPRND_MASK_21_25
 #define OPRND_MASK_0_4or16_20       OPRND_MASK_0_4 | OPRND_MASK_16_20
@@ -2201,11 +2202,11 @@ const struct _csky_opcode csky_v2_opcodes[] =
   DOP32("ixh",
         OPCODE_INFO3(0xc4000820, (0_4, AREG, OPRND_SHIFT_0_BIT), (16_20, AREG, OPRND_SHIFT_0_BIT), (21_25, AREG, OPRND_SHIFT_0_BIT)),
         OPCODE_INFO2(0xc4000820, (0_4or16_20, DUP_AREG, OPRND_SHIFT_0_BIT), (21_25, AREG, OPRND_SHIFT_0_BIT)),
-        CSKYV2_ISA_2E3),
+        CSKYV2_ISA_1E2),
   DOP32("ixw",
         OPCODE_INFO3(0xc4000840, (0_4, AREG, OPRND_SHIFT_0_BIT), (16_20, AREG, OPRND_SHIFT_0_BIT), (21_25, AREG, OPRND_SHIFT_0_BIT)),
         OPCODE_INFO2(0xc4000840, (0_4or16_20, DUP_AREG, OPRND_SHIFT_0_BIT), (21_25, AREG, OPRND_SHIFT_0_BIT)),
-        CSKYV2_ISA_2E3),
+        CSKYV2_ISA_1E2),
   OP32("ixd",
        OPCODE_INFO3(0xc4000880, (0_4, AREG, OPRND_SHIFT_0_BIT), (16_20, AREG, OPRND_SHIFT_0_BIT), (21_25, AREG, OPRND_SHIFT_0_BIT)),
        CSKYV2_ISA_2E3),
@@ -2788,6 +2789,14 @@ const struct _csky_opcode csky_v2_opcodes[] =
             CSKYV2_ISA_E1,
             OPCODE_INFO1(0xe8400000, (0_15, COND16b, OPRND_SHIFT_1_BIT)),
             CSKYV2_ISA_1E2),
+#undef _FLAGS
+#undef _RELOC16
+#define _RELOC16    0
+#define _FLAGS      CSKY_INSN_FLAGS_NONE
+  OP32("bnezad",
+            OPCODE_INFO2(0xe8200000, (16_20, AREG, OPRND_SHIFT_0_BIT), (0_15, COND16b, OPRND_SHIFT_1_BIT)),
+            CSKYV2_ISA_3E3R2),
+
 #undef _RELOC16
 #undef _RELOC32
 #undef _FLAGS
@@ -2926,6 +2935,9 @@ const struct _csky_opcode csky_v2_opcodes[] =
         CSKYV2_ISA_10E60),
   OP32("dcache.cva",
         OPCODE_INFO1(0xc0e09420, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.cval1",
+        OPCODE_INFO1(0xc2e09420, (16_20, AREG, OPRND_SHIFT_0_BIT)),
         CSKYV2_ISA_10E60),
   OP32("dcache.csw",
         OPCODE_INFO1(0xc0c09420, (16_20, AREG, OPRND_SHIFT_0_BIT)),
@@ -3298,7 +3310,7 @@ const struct _csky_opcode csky_v2_opcodes[] =
   OP32("plsr.u16.r",
        OPCODE_INFO3(0xf800d340, (0_4, AREG, OPRND_SHIFT_0_BIT), (16_20, AREG, OPRND_SHIFT_0_BIT), (21_25, AREG, OPRND_SHIFT_0_BIT)),
        CSKY_ISA_DSP_ENHANCE),
-  OP32("plsli.u16",
+  OP32("plsli.16",
        OPCODE_INFO3(0xf800d400, (0_4, AREG, OPRND_SHIFT_0_BIT), (16_20, AREG, OPRND_SHIFT_0_BIT), (21_25, OIMM4b, OPRND_SHIFT_0_BIT)),
        CSKY_ISA_DSP_ENHANCE),
   OP32("plsl.u16",
@@ -3656,6 +3668,15 @@ const struct _csky_opcode csky_v2_opcodes[] =
        CSKY_ISA_VDSP),
   OP32("vmtvr.u32",
        OPCODE_INFO2(0xf8001340, (0_3or21_24, FREG_WITH_INDEX, OPRND_SHIFT_0_BIT), (16_20, AREG, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vins.8",
+       OPCODE_INFO2(0xf8001400, (0_3or5_8, FREG_WITH_INDEX, OPRND_SHIFT_0_BIT), (16_19or21_24, FREG_WITH_INDEX, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vins.16",
+       OPCODE_INFO2(0xf8101400, (0_3or5_8, FREG_WITH_INDEX, OPRND_SHIFT_0_BIT), (16_19or21_24, FREG_WITH_INDEX, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vins.32",
+       OPCODE_INFO2(0xfa001400, (0_3or5_8, FREG_WITH_INDEX, OPRND_SHIFT_0_BIT), (16_19or21_24, FREG_WITH_INDEX, OPRND_SHIFT_0_BIT)),
        CSKY_ISA_VDSP),
   OP32("vldd.8",
        SOPCODE_INFO2(0xf8002000, (0_3, FREG, OPRND_SHIFT_0_BIT), BRACKET_OPRND((16_20, AREG, OPRND_SHIFT_0_BIT), (4_7or21_24, IMM_FLDST, OPRND_SHIFT_3_BIT))),
