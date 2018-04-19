@@ -127,6 +127,7 @@ enum operand_type
   OPRND_TYPE_IMM5b_7_31,
   /* operand type for rori and rotri.  */
   OPRND_TYPE_IMM5b_RORI,
+  OPRND_TYPE_IMM5b_VSH,
   OPRND_TYPE_IMM5b_POWER,
   OPRND_TYPE_IMM5b_7_31_POWER,
   OPRND_TYPE_IMM5b_BMASKI,
@@ -268,11 +269,16 @@ struct _csky_opcode
   /* Whether this insn need relocation, 0: no, !=0: yes.  */
   signed int reloc16;
   signed int reloc32;
-  /* Whether this insn need relax, 0: no, != 0: yes.   */
-  signed int relax;
+  /* Bit 0: relax flag; Bit 1: callgraph;  */
+  signed int flags;
   /* Function to call when this instruction has special circumstances.  */
   bfd_boolean (*work)(void);
 };
+
+/* The following are insn flags defination.  */
+#define CSKY_INSN_FLAGS_NONE         (0)
+#define CSKY_INSN_FLAGS_RELAX        (1 << 0) /* If need relax.  */
+#define CSKY_INSN_FLAGS_CALLG        (1 << 1) /* If need callgraph.  */
 
 /* The followings are the opcode used in relax/fix process.  */
 #define CSKYV1_INST_JMPI            0x7000
@@ -410,68 +416,68 @@ struct _csky_opcode
 
 #define OP16(mnem, opcode16, isa)  \
           {mnem, _TRANSFER, {opcode16, OPCODE_INFO_NONE()}, \
-                {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, isa, 0, _RELOC16, 0, _RELAX, NULL}
+                {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, isa, 0, _RELOC16, 0, _FLAGS, NULL}
 #ifdef BUILD_AS
 #define OP16_WITH_WORK(mnem, opcode16, isa, work)  \
           {mnem, _TRANSFER, {opcode16, OPCODE_INFO_NONE()}, \
-                {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, isa, 0, _RELOC16, 0, _RELAX, work}
+                {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, isa, 0, _RELOC16, 0, _FLAGS, work}
 #define OP32_WITH_WORK(mnem, opcode32, isa, work)  \
           {mnem, _TRANSFER, {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, \
-                {opcode32, OPCODE_INFO_NONE()}, 0, isa, 0, _RELOC32, _RELAX, work}
+                {opcode32, OPCODE_INFO_NONE()}, 0, isa, 0, _RELOC32, _FLAGS, work}
 #define OP16_OP32_WITH_WORK(mnem, opcode16, isa16, opcode32, isa32, work)  \
           {mnem, _TRANSFER, {opcode16, OPCODE_INFO_NONE()}, \
-                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, work}
+                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, work}
 #define DOP16_OP32_WITH_WORK(mnem, opcode16a, opcode16b, isa16, opcode32, isa32, work)  \
           {mnem, _TRANSFER, {opcode16a, opcode16b}, \
-                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, work}
+                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, work}
 #define DOP16_DOP32_WITH_WORK(mnem, opcode16a, opcode16b, isa16, opcode32a, opcode32b, isa32, work)  \
           {mnem, _TRANSFER, {opcode16a, opcode16b}, \
-                {opcode32a, opcode32b}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, work}
+                {opcode32a, opcode32b}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, work}
 #define DOP32_WITH_WORK(mnem, opcode32a, opcode32b, isa, work)  \
           {mnem, _TRANSFER, {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, \
-                {opcode32a,opcode32b}, 0, isa, 0, _RELOC32, _RELAX, work}
+                {opcode32a,opcode32b}, 0, isa, 0, _RELOC32, _FLAGS, work}
 #else
 #define OP16_WITH_WORK(mnem, opcode16, isa, work)  \
           {mnem, _TRANSFER, {opcode16, OPCODE_INFO_NONE()}, \
-                {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, isa, 0, _RELOC16, 0, _RELAX, NULL}
+                {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, isa, 0, _RELOC16, 0, _FLAGS, NULL}
 #define OP32_WITH_WORK(mnem, opcode32, isa, work)  \
           {mnem, _TRANSFER, {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, \
-                {opcode32, OPCODE_INFO_NONE()}, 0, isa, 0, _RELOC32, _RELAX, NULL}
+                {opcode32, OPCODE_INFO_NONE()}, 0, isa, 0, _RELOC32, _FLAGS, NULL}
 #define OP16_OP32_WITH_WORK(mnem, opcode16, isa16, opcode32, isa32, work)  \
           {mnem, _TRANSFER, {opcode16, OPCODE_INFO_NONE()}, \
-                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, NULL}
+                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, NULL}
 #define DOP16_OP32_WITH_WORK(mnem, opcode16a, opcode16b, isa16, opcode32, isa32, work)  \
           {mnem, _TRANSFER, {opcode16a, opcode16b}, \
-                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, NULL}
+                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, NULL}
 #define DOP16_DOP32_WITH_WORK(mnem, opcode16a, opcode16b, isa16, opcode32a, opcode32b, isa32, work)  \
           {mnem, _TRANSFER, {opcode16a, opcode16b}, \
-                {opcode32a, opcode32b}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, NULL}
+                {opcode32a, opcode32b}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, NULL}
 #define DOP32_WITH_WORK(mnem, opcode32a, opcode32b, isa, work)  \
           {mnem, _TRANSFER, {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, \
-                {opcode32a,opcode32b}, 0, isa, 0, _RELOC32, _RELAX, NULL}
+                {opcode32a,opcode32b}, 0, isa, 0, _RELOC32, _FLAGS, NULL}
 #endif
 
 #define DOP16(mnem, opcode16_1, opcode16_2, isa)  \
           {mnem, _TRANSFER, {opcode16_1, opcode16_2}, \
-                {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, isa, 0, _RELOC16, 0, _RELAX, NULL}
+                {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, isa, 0, _RELOC16, 0, _FLAGS, NULL}
 #define OP32(mnem, opcode32, isa)  \
           {mnem, _TRANSFER, {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, \
-                {opcode32, OPCODE_INFO_NONE()}, 0, isa, 0, _RELOC32, _RELAX, NULL}
+                {opcode32, OPCODE_INFO_NONE()}, 0, isa, 0, _RELOC32, _FLAGS, NULL}
 #define DOP32(mnem, opcode32a, opcode32b, isa)  \
           {mnem, _TRANSFER, {OPCODE_INFO_NONE(), OPCODE_INFO_NONE()}, \
-                {opcode32a,opcode32b}, 0, isa, 0, _RELOC32, _RELAX, NULL}
+                {opcode32a,opcode32b}, 0, isa, 0, _RELOC32, _FLAGS, NULL}
 #define OP16_OP32(mnem, opcode16, isa16, opcode32, isa32) \
           {mnem, _TRANSFER, {opcode16, OPCODE_INFO_NONE()}, \
-                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, NULL}
+                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, NULL}
 #define DOP16_OP32(mnem, opcode16a, opcode16b, isa16, opcode32, isa32) \
           {mnem, _TRANSFER, {opcode16a, opcode16b}, \
-                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, NULL}
+                {opcode32, OPCODE_INFO_NONE()}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, NULL}
 #define OP16_DOP32(mnem, opcode16, isa16, opcode32a, opcode32b, isa32) \
           {mnem, _TRANSFER, {opcode16, OPCODE_INFO_NONE()}, \
-                {opcode32a, opcode32b}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, NULL}
+                {opcode32a, opcode32b}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, NULL}
 #define DOP16_DOP32(mnem, opcode16a, opcode16b, isa16, opcode32a, opcode32b, isa32) \
           {mnem, _TRANSFER, {opcode16a, opcode16b}, \
-                {opcode32a, opcode32b}, isa16, isa32, _RELOC16, _RELOC32, _RELAX, NULL}
+                {opcode32a, opcode32b}, isa16, isa32, _RELOC16, _RELOC32, _FLAGS, NULL}
 
 #define V1_REG_SP              0
 #define V1_REG_LR             15
@@ -596,7 +602,7 @@ const struct _csky_opcode csky_v1_opcodes[] =
 #define _TRANSFER   0
 #define _RELOC16    0
 #define _RELOC32    0
-#define _RELAX      0
+#define _FLAGS      0
   OP16("bkpt",
        OPCODE_INFO0(0x0000),
        CSKYV1_ISA_E1),
@@ -1072,9 +1078,14 @@ const struct _csky_opcode csky_v1_opcodes[] =
        CSKYV1_ISA_E1),
 #undef _TRANSFER
 #define _TRANSFER 0
+#undef _FLAGS
+#define _FLAGS    (1 << 1)
+  /* Flags bit 2 means do callgraph.  */
   OP16("jsri",
        OPCODE_INFO1(0x7f00, (0_7, OFF8b, OPRND_SHIFT_2_BIT)),
        CSKYV1_ISA_E1),
+#undef _FLAGS
+#define _FLAGS    0
   OP16_WITH_WORK("lrw",
                  OPCODE_INFO2(0x7000, (8_11, REGnsplr, OPRND_SHIFT_0_BIT), (0_7, CONSTANT, OPRND_SHIFT_2_BIT)),
                  CSKYV1_ISA_E1,
@@ -1140,7 +1151,7 @@ const struct _csky_opcode csky_v1_opcodes[] =
         CSKYV1_ISA_E1),
 
 #undef _RELOC16
-#define _RELOC16    BFD_RELOC_CKCORE_PCREL_IMM11BY2
+#define _RELOC16      BFD_RELOC_CKCORE_PCREL_IMM11BY2
   OP16("bt",
        OPCODE_INFO1(0xe000, (0_10, OFF11b, OPRND_SHIFT_1_BIT)),
        CSKYV1_ISA_E1),
@@ -1148,20 +1159,24 @@ const struct _csky_opcode csky_v1_opcodes[] =
        OPCODE_INFO1(0xe800, (0_10, OFF11b, OPRND_SHIFT_1_BIT)),
        CSKYV1_ISA_E1),
 #undef _TRANSFER
-#define _TRANSFER 1
+#define _TRANSFER     1
   OP16("br",
        OPCODE_INFO1(0xf000, (0_10, OFF11b, OPRND_SHIFT_1_BIT)),
        CSKYV1_ISA_E1),
 #undef _TRANSFER
-#define _TRANSFER 0
+#define _TRANSFER     0
+#undef _FLAGS
+#define _FLAGS        (1 << 1)
   OP16("bsr",
        OPCODE_INFO1(0xf800, (0_10, OFF11b, OPRND_SHIFT_1_BIT)),
        CSKYV1_ISA_E1),
+#undef _FLAGS
+#define _FLAGS        0
 #undef _RELOC16
-#define _RELOC16    0
+#define _RELOC16      0
 
-#undef _RELAX
-#define _RELAX 1
+#undef _FLAGS
+#define _FLAGS      ((1 << 0))
   OP16("jbt",
        OPCODE_INFO1(0xe000, (0_10, JBTF, OPRND_SHIFT_0_BIT)),
        CSKYV1_ISA_E1),
@@ -1175,8 +1190,8 @@ const struct _csky_opcode csky_v1_opcodes[] =
        CSKYV1_ISA_E1),
 #undef _TRANSFER
 #define _TRANSFER 0
-#undef _RELAX
-#define _RELAX 0
+#undef _FLAGS
+#define _FLAGS 0
 
   OP16_WITH_WORK("jbsr",
                  OPCODE_INFO1(0xf800, (0_10, JBSR, OPRND_SHIFT_0_BIT)),
@@ -1532,7 +1547,7 @@ const struct _csky_opcode csky_v1_opcodes[] =
 #undef _TRANSFER
 #undef _RELOC16
 #undef _RELOC32
-#undef _RELAX
+#undef _FLAGS
 
 /* csky v2 opcodes.  */
 const struct _csky_opcode csky_v2_opcodes[] =
@@ -1540,7 +1555,7 @@ const struct _csky_opcode csky_v2_opcodes[] =
 #define _TRANSFER   0
 #define _RELOC16    0
 #define _RELOC32    0
-#define _RELAX      0
+#define _FLAGS      CSKY_INSN_FLAGS_NONE
   OP16("bkpt",
        OPCODE_INFO0(0x0000),
        CSKYV2_ISA_E1),
@@ -1797,7 +1812,7 @@ const struct _csky_opcode csky_v2_opcodes[] =
        CSKYV2_ISA_1E2),
   OP32("ldq",
        OPCODE_INFO2(0xd0801c23, (NONE, REGr4_r7, OPRND_SHIFT_0_BIT), (16_20, AREG_WITH_BRACKET,OPRND_SHIFT_0_BIT)),
-       CSKYV2_ISA_2E3),
+       CSKYV2_ISA_1E2),
   OP32("str.b",
        SOPCODE_INFO2(0xd4000000, (0_4, AREG, OPRND_SHIFT_0_BIT), BRACKET_OPRND((16_20, AREG, OPRND_SHIFT_0_BIT), (5_9or21_25, AREG_WITH_LSHIFT, OPRND_SHIFT_0_BIT))),
        CSKYV2_ISA_2E3),
@@ -1812,7 +1827,7 @@ const struct _csky_opcode csky_v2_opcodes[] =
        CSKYV2_ISA_1E2),
   OP32("stq",
        OPCODE_INFO2(0xd4801c23, (NONE, REGr4_r7, OPRND_SHIFT_0_BIT), (16_20, AREG_WITH_BRACKET,OPRND_SHIFT_0_BIT)),
-       CSKYV2_ISA_2E3),
+       CSKYV2_ISA_1E2),
   OP32("ld.bs",
        SOPCODE_INFO2(0xd8004000, (21_25, AREG, OPRND_SHIFT_0_BIT), BRACKET_OPRND((16_20, AREG, OPRND_SHIFT_0_BIT), (0_11, IMM_LDST, OPRND_SHIFT_0_BIT))),
        CSKYV2_ISA_1E2),
@@ -2171,10 +2186,6 @@ const struct _csky_opcode csky_v2_opcodes[] =
   OP32("fstmm",
        OPCODE_INFO2(0xf4003600, (0_3or21_24, FREGLIST_DASH, OPRND_SHIFT_0_BIT), (16_20, AREG_WITH_BRACKET,OPRND_SHIFT_0_BIT)),
        CSKY_ISA_FLOAT_1E2),
-  DOP32("sync",
-        OPCODE_INFO1(0xc0000420, (21_25, IMM5b, OPRND_SHIFT_0_BIT)),
-        OPCODE_INFO0(0xc0000420),
-        CSKYV2_ISA_E1),
   DOP32("idly",
         OPCODE_INFO1(0xc0001c20, (21_25, OIMM5b_IDLY, OPRND_SHIFT_0_BIT)),
         OPCODE_INFO0(0xc0601c20),
@@ -2682,9 +2693,13 @@ const struct _csky_opcode csky_v2_opcodes[] =
        float_work_fmovi),
 #undef _RELOC32
 #define _RELOC32 BFD_RELOC_CKCORE_PCREL_IMM26BY2
+#undef _FLAGS
+#define _FLAGS        CSKY_INSN_FLAGS_CALLG
   OP32("bsr",
        OPCODE_INFO1(0xe0000000, (0_25, OFF26b, OPRND_SHIFT_1_BIT)),
        CSKYV2_ISA_E1),
+#undef _FLAGS
+#define _FLAGS        CSKY_INSN_FLAGS_NONE
 #undef _RELOC32
 #define _RELOC32 BFD_RELOC_CKCORE_DOFFSET_IMM18
   OP32("lrs.b",
@@ -2722,10 +2737,14 @@ const struct _csky_opcode csky_v2_opcodes[] =
 
 #undef _RELOC32
 #define _RELOC32    BFD_RELOC_CKCORE_PCREL_IMM16BY4
+#undef _FLAGS
+#define _FLAGS    CSKY_INSN_FLAGS_CALLG
   OP32_WITH_WORK("jsri",
                  OPCODE_INFO1(0xeae00000, (0_15, OFF16b, OPRND_SHIFT_2_BIT)),
                  CSKYV2_ISA_2E3,
                  v2_work_jsri),
+#undef _FLAGS
+#define _FLAGS    CSKY_INSN_FLAGS_NONE
 #undef _RELOC32
 #define _RELOC32    BFD_RELOC_CKCORE_PCREL_IMM16BY2
   OP32("bez",
@@ -2746,11 +2765,11 @@ const struct _csky_opcode csky_v2_opcodes[] =
   OP32("bhsz",
        OPCODE_INFO2(0xe9a00000, (16_20, AREG, OPRND_SHIFT_0_BIT), (0_15, OFF16b_LSL1, OPRND_SHIFT_1_BIT)),
        CSKYV2_ISA_2E3),
-#undef _RELAX
+#undef _FLAGS
 #undef _RELOC16
 #undef _TRANSFER
 #define _TRANSFER   1
-#define _RELAX      1
+#define _FLAGS      CSKY_INSN_FLAGS_RELAX
 #define _RELOC16    BFD_RELOC_CKCORE_PCREL_IMM10BY2
   OP16_OP32("br",
             OPCODE_INFO1(0x0400, (0_9, UNCOND10b, OPRND_SHIFT_1_BIT)),
@@ -2771,10 +2790,10 @@ const struct _csky_opcode csky_v2_opcodes[] =
             CSKYV2_ISA_1E2),
 #undef _RELOC16
 #undef _RELOC32
-#undef _RELAX
+#undef _FLAGS
 #define _RELOC16    0
 #define _RELOC32    0
-#define _RELAX      0
+#define _FLAGS      CSKY_INSN_FLAGS_NONE
 #undef _TRANSFER
 #define _TRANSFER   1
   OP16_WITH_WORK("jbr",
@@ -2806,7 +2825,7 @@ const struct _csky_opcode csky_v2_opcodes[] =
   DOP32_WITH_WORK("bgeni",
                   OPCODE_INFO2(0xea000000, (16_20, AREG, OPRND_SHIFT_0_BIT), (0_4, IMM4b, OPRND_SHIFT_0_BIT)),
                   OPCODE_INFO2(0xea200000, (16_20, AREG, OPRND_SHIFT_0_BIT), (0_4, IMM5b, OPRND_SHIFT_0_BIT)),
-                  CSKYV2_ISA_E1,
+                  CSKYV2_ISA_1E2,
                   v2_work_bgeni),
 #undef _RELOC16
 #undef _RELOC32
@@ -2824,8 +2843,8 @@ const struct _csky_opcode csky_v2_opcodes[] =
 #define _RELOC16    0
 #define _RELOC32    0
 
-#undef _RELAX
-#define _RELAX      1
+#undef _FLAGS
+#define _FLAGS      CSKY_INSN_FLAGS_RELAX
   OP32("jbez",
        OPCODE_INFO2(0xe9000000, (16_20, AREG, OPRND_SHIFT_0_BIT), (0_15, JCOMPZ, OPRND_SHIFT_0_BIT)),
        CSKYV2_ISA_2E3),
@@ -2844,12 +2863,116 @@ const struct _csky_opcode csky_v2_opcodes[] =
   OP32("jbhsz",
        OPCODE_INFO2(0xe9a00000, (16_20, AREG, OPRND_SHIFT_0_BIT), (0_15, JCOMPZ, OPRND_SHIFT_0_BIT)),
        CSKYV2_ISA_2E3),
-#undef _RELAX
-#define _RELAX      0
+#undef _FLAGS
+#define _FLAGS      CSKY_INSN_FLAGS_NONE
+
+  /* The followings are CK860 instructions.  */
+  OP32("sync.is",
+        OPCODE_INFO0(0xc2200420),
+        CSKYV2_ISA_10E60),
+  OP32("sync.i",
+        OPCODE_INFO0(0xc0200420),
+        CSKYV2_ISA_10E60),
+  OP32("sync.s",
+        OPCODE_INFO0(0xc2000420),
+        CSKYV2_ISA_10E60),
+  OP32("bar.brwarw",
+        OPCODE_INFO0(0xc000842f),
+        CSKYV2_ISA_10E60),
+  OP32("bar.brwarws",
+        OPCODE_INFO0(0xc200842f),
+        CSKYV2_ISA_10E60),
+  OP32("bar.brar",
+        OPCODE_INFO0(0xc0008425),
+        CSKYV2_ISA_10E60),
+  OP32("bar.brars",
+        OPCODE_INFO0(0xc2008425),
+        CSKYV2_ISA_10E60),
+  OP32("bar.bwaw",
+        OPCODE_INFO0(0xc000842a),
+        CSKYV2_ISA_10E60),
+  OP32("bar.bwaws",
+        OPCODE_INFO0(0xc200842a),
+        CSKYV2_ISA_10E60),
+  OP32("icache.iall",
+        OPCODE_INFO0(0xc1009020),
+        CSKYV2_ISA_10E60),
+  OP32("icache.ialls",
+        OPCODE_INFO0(0xc3009020),
+        CSKYV2_ISA_10E60),
+  OP32("l2cache.iall",
+        OPCODE_INFO0(0xc1009820),
+        CSKYV2_ISA_10E60),
+  OP32("l2cache.call",
+        OPCODE_INFO0(0xc0809820),
+        CSKYV2_ISA_10E60),
+  OP32("l2cache.ciall",
+        OPCODE_INFO0(0xc1809820),
+        CSKYV2_ISA_10E60),
+  OP32("icache.iva",
+        OPCODE_INFO1(0xc0a09020, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.iall",
+        OPCODE_INFO0(0xc1009420),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.iva",
+        OPCODE_INFO1(0xc1609420, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.isw",
+        OPCODE_INFO1(0xc1409420, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.call",
+        OPCODE_INFO0(0xc0809420),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.cva",
+        OPCODE_INFO1(0xc0e09420, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.csw",
+        OPCODE_INFO1(0xc0c09420, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.ciall",
+        OPCODE_INFO0(0xc1809420),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.civa",
+        OPCODE_INFO1(0xc1e09420, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("dcache.cisw",
+        OPCODE_INFO1(0xc1c09420, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("tlbi.vaa",
+        OPCODE_INFO1(0xc0408820, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("tlbi.vaas",
+        OPCODE_INFO1(0xc2408820, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("tlbi.asid",
+        OPCODE_INFO1(0xc0208820, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("tlbi.asids",
+        OPCODE_INFO1(0xc2208820, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("tlbi.va",
+        OPCODE_INFO1(0xc0608820, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("tlbi.vas",
+        OPCODE_INFO1(0xc2608820, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_10E60),
+  OP32("tlbi.all",
+        OPCODE_INFO0(0xc0008820),
+        CSKYV2_ISA_10E60),
+  OP32("tlbi.alls",
+        OPCODE_INFO0(0xc2008820),
+        CSKYV2_ISA_10E60),
+  DOP32("sync",
+        OPCODE_INFO0(0xc0000420),
+        OPCODE_INFO1(0xc0000420, (21_25, IMM5b, OPRND_SHIFT_0_BIT)),
+        CSKYV2_ISA_E1),
+
 
   /* The followings are enhance DSP instructions.  */
-  OP32_WITH_WORK("bloop",
+  DOP32_WITH_WORK("bloop",
        OPCODE_INFO3(0xe9c00000, (16_20, AREG, OPRND_SHIFT_0_BIT), (0_11, BLOOP_OFF12b, OPRND_SHIFT_1_BIT), (12_15, BLOOP_OFF4b, OPRND_SHIFT_1_BIT)),
+       OPCODE_INFO2(0xe9c00000, (16_20, AREG, OPRND_SHIFT_0_BIT), (0_11, BLOOP_OFF12b, OPRND_SHIFT_1_BIT)),
        CSKY_ISA_DSP_ENHANCE,
        dsp_work_bloop),
   /* The followings are ld/st instructions.  */
@@ -4287,6 +4410,45 @@ const struct _csky_opcode csky_v2_opcodes[] =
   OP32("vshr.s32.r",
        OPCODE_INFO3(0xfa0006d0, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (21_24, VREG, OPRND_SHIFT_0_BIT)),
        CSKY_ISA_VDSP),
+  OP32("vshri.u8",
+       OPCODE_INFO3(0xf8000600, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.u16",
+       OPCODE_INFO3(0xf8100600, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.u32",
+       OPCODE_INFO3(0xfa000600, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.s8",
+       OPCODE_INFO3(0xf8000610, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.s16",
+       OPCODE_INFO3(0xf8100610, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.s32",
+       OPCODE_INFO3(0xfa000610, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.u8.r",
+       OPCODE_INFO3(0xf8000640, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.u16.r",
+       OPCODE_INFO3(0xf8100640, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.u32.r",
+       OPCODE_INFO3(0xfa000640, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.s8.r",
+       OPCODE_INFO3(0xf8000650, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.s16.r",
+       OPCODE_INFO3(0xf8100650, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshri.s32.r",
+       OPCODE_INFO3(0xfa000650, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshr.s32.r",
+       OPCODE_INFO3(0xfa0006d0, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (21_24, VREG, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
   OP32("vshl.u8",
        OPCODE_INFO3(0xf8000780, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (21_24, VREG, OPRND_SHIFT_0_BIT)),
        CSKY_ISA_VDSP),
@@ -4323,6 +4485,43 @@ const struct _csky_opcode csky_v2_opcodes[] =
   OP32("vshl.s32.s",
        OPCODE_INFO3(0xfa0007d0, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (21_24, VREG, OPRND_SHIFT_0_BIT)),
        CSKY_ISA_VDSP),
+  OP32("vshli.u8",
+       OPCODE_INFO3(0xf8000700, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.u16",
+       OPCODE_INFO3(0xf8100700, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.u32",
+       OPCODE_INFO3(0xfa000700, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.s8",
+       OPCODE_INFO3(0xf8000710, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.s16",
+       OPCODE_INFO3(0xf8100710, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.s32",
+       OPCODE_INFO3(0xfa000710, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.u8.s",
+       OPCODE_INFO3(0xf8000740, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.u16.s",
+       OPCODE_INFO3(0xf8100740, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.u32.s",
+       OPCODE_INFO3(0xfa000740, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.s8.s",
+       OPCODE_INFO3(0xf8000750, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.s16.s",
+       OPCODE_INFO3(0xf8100750, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+  OP32("vshli.s32.s",
+       OPCODE_INFO3(0xfa000750, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (5or21_24, IMM5b_VSH, OPRND_SHIFT_0_BIT)),
+       CSKY_ISA_VDSP),
+
   OP32("vcmphs.u8",
        OPCODE_INFO3(0xf8000800, (0_3, VREG, OPRND_SHIFT_0_BIT), (16_19, VREG, OPRND_SHIFT_0_BIT), (21_24, VREG, OPRND_SHIFT_0_BIT)),
        CSKY_ISA_VDSP),

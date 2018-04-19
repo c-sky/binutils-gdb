@@ -3,7 +3,7 @@
 #readelf: -r --wide
 
 
-Relocation section '.rela.text\' at offset .* contains 1 entries:
+Relocation section '.rela.text\' at offset .* contains 2 entries:
 #...
 0000000c.*R_CKCORE_ADDR32[ \t]+00000000[ \t]+\.text \+[ \t]+[0-9a-f]+
 #pass

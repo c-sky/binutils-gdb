@@ -307,6 +307,7 @@ BFD32_BACKENDS = \
 	coff-z8k.lo \
 	coffgen.lo \
 	cofflink.lo \
+	csky-callgraph-bfd.lo \
 	dwarf1.lo \
 	dwarf2.lo \
 	ecoff.lo \

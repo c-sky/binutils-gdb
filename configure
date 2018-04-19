@@ -6822,8 +6822,10 @@ if test "x$CXXFLAGS_FOR_TARGET" = x; then
   fi
 fi
 
-
-
+if test "${enable_any+set}" = set; then :
+enable_any=yes
+CFLAGS="$CFLAGS -DENABLE_ANY"
+fi
 
 # Handle --with-headers=XXX.  If the value is not "yes", the contents of
 # the named directory are copied to $(tooldir)/sys-include.

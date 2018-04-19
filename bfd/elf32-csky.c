@@ -28,6 +28,7 @@
 
 #include <assert.h>
 #include "libiberty.h"
+#include <csky-callgraph-bfd.h>
 
 /* The bsr instruction offset limit.  */
 #define BSR_MAX_FWD_BRANCH_OFFSET       (((1 << 25) - 1) << 1)
@@ -59,6 +60,8 @@ typedef struct csky_arch_for_merge
 } csky_arch_for_merge;
 
 int got_size_flags=0;
+
+callgraph_hash_table func_hash_table;
 
 static struct csky_arch_for_merge csky_archs[] =
 {
@@ -4371,6 +4374,19 @@ csky_elf_relocate_section(bfd *                  output_bfd,
   struct csky_elf_link_hash_table * htab;
   bfd_vma *local_got_offsets = elf_local_got_offsets (input_bfd);
 
+  /* For callgraph.  */
+  bfd_func_link *current_input_file = func_hash_table.bfd_head;
+  func_hash_bind *current_func = NULL;
+
+  while (current_input_file != NULL)
+    {
+      if (current_input_file->abfd == input_bfd)
+        break;
+      current_input_file = current_input_file->next;
+    }
+  if (current_input_file != NULL)
+    current_func = current_input_file->func_head;
+
   htab = csky_elf_hash_table(info);
   if (htab == NULL)
     {
@@ -4450,7 +4466,6 @@ csky_elf_relocate_section(bfd *                  output_bfd,
              section contents zeroed.  Avoid any special processing.
              And if the symbol is referenced in '.csky_stack_size' section,
              set the address to SEC_DISCARDED(0xffffffff).  */
-#if 0
           /* The .csky_stack_size section is just for callgraph.  */
           if (strcmp(input_section->name, ".csky_stack_size") == 0)
             {
@@ -4462,7 +4477,6 @@ csky_elf_relocate_section(bfd *                  output_bfd,
               continue;
             }
           else
-#endif
             {
               RELOC_AGAINST_DISCARDED_SECTION (info, input_bfd, input_section,
                                                rel, 1, relend, howto, 0, contents);
@@ -4734,8 +4748,58 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                 /* If h!=NULL, means it is global symbol,
                    Otherwise it is local symbol, find the function with
                    address.  */
-
                 /* TODO: deal with callgraph */
+                callgraph_hash_entry *ret = NULL;
+                BFD_ASSERT (input_section->output_section != NULL);
+                long address = input_section->output_offset + rel->r_offset
+                               + input_section->output_section->vma;
+
+                /* If current_input_file is NULL, the ld maybe don't have
+                   option --callgraph or --ckmap, so the func_hash_table
+                   has not been built.  */
+                if (current_input_file != NULL)
+                  {
+                    current_func = find_func_with_addr (current_input_file,
+                                                        current_func, address,
+                                                        0);
+                    if (h != NULL)
+                      {
+                        /* Global.  */
+                        ret = callgraph_hash_lookup (&func_hash_table,
+                                                     h->root.root.string,
+                                                     0, 0);
+                      }
+                    else if (sec != NULL)
+                      {
+                        /* Local.  */
+                        long func_addr = sec->output_offset
+                         + rel->r_addend
+                         + sec->output_section->vma;
+                        func_hash_bind *call_func = NULL;
+                        call_func = find_func_with_addr (current_input_file,
+                                                         call_func, func_addr,
+                                                         1);
+                        if (call_func != NULL)
+                          ret = call_func->hash_entry;
+                      }
+                    if (ret != NULL)
+                      if (current_func != NULL)
+                        {
+                          if (current_func != NULL)
+                            {
+                              func_vec_insert (&current_func->hash_entry->calls,
+                                               ret);
+                              func_vec_insert (&ret->call_bys,
+                                               current_func->hash_entry);
+                            }
+                          else
+                            {
+                              add_ref elem;
+                              elem.section = input_section;
+                              add_ref_list_insert (&ret->add_refs, elem);
+                            }
+                        }
+                  }
 
                 if (ELF32_R_TYPE (rel->r_info) == R_CKCORE_CALLGRAPH)
                   {

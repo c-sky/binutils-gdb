@@ -428,10 +428,15 @@ main (int argc, char **argv)
 	link_info.output_bfd->flags |= BFD_COMPRESS_GABI;
     }
 
+  ldemul_before_write ();
+
   ldwrite ();
 
   if (config.map_file != NULL)
     lang_map ();
+
+  ldemul_before_finish ();
+
   if (command_line.cref)
     output_cref (config.map_file != NULL ? config.map_file : stdout);
   if (nocrossref_list != NULL)
@@ -446,6 +451,7 @@ main (int argc, char **argv)
     fprintf (stderr, "lookup = %p val %lx\n", h, h ? h->u.def.value : 1);
   }
 #endif
+
   ldexp_finish ();
   lang_finish ();
 

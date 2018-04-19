@@ -355,3 +355,18 @@ ldemul_extra_map_file_text (bfd *abfd, struct bfd_link_info *info, FILE *mapf)
   if (ld_emulation->extra_map_file_text)
     ld_emulation->extra_map_file_text (abfd, info, mapf);
 }
+
+void
+ldemul_before_write(void)
+{
+  if (ld_emulation->before_write)
+    ld_emulation->before_write ();
+}
+
+void
+ldemul_before_finish (void)
+{
+  if (ld_emulation->before_finish)
+    ld_emulation->before_finish();
+}
+

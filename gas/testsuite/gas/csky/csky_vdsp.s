@@ -1,159 +1,159 @@
 
 .text
 vdsp_instructions:
-   vstrq.8 vr2, (r2, r3 << 0)
-   vstrq.16 vr2, (r2, r3 << 0)
-   vstrq.32 vr2, (r2, r3 << 0)
-   vldrq.8 vr2, (r2, r3 << 0)
-   vldrq.16 vr2, (r2, r3 << 0)
-   vldrq.32 vr2, (r2, r3 << 0)
-   vstrd.8 vr2, (r2, r3 << 0)
-   vstrd.16 vr2, (r2, r3 << 0)
-   vstrd.32 vr2, (r2, r3 << 0)
-   vldrd.8 vr2, (r2, r3 << 0)
-   vldrd.16 vr2, (r2, r3 << 0)
-   vldrd.32 vr2, (r2, r3 << 0)
-   vldq.8  vr2, (r2, 16)
-   vldq.16  vr2, (r2, 16)
-   vldq.32  vr2, (r2, 16)
-   vstq.8  vr2, (r2, 16)
-   vstq.16  vr2, (r2, 16)
-   vstq.32  vr2, (r2, 16)
-   vldd.8  vr2, (r2, 16)
-   vldd.16  vr2, (r2, 16)
-   vldd.32  vr2, (r2, 16)
-   vstd.8  vr2, (r2, 16)
-   vstd.16  vr2, (r2, 16)
-   vstd.32  vr2, (r2, 16)
-  vmulsh  r30, r1
-  vmulsha r0,  r31
-  vmulsw  r12, r12
-  vmulswa r28, r21
-  vmulsws r1,  r4
-  vmfvr.u8   r1,  vr2[9]
-  vmfvr.u16  r3,  fr4[0]
-  vmfvr.u32  r31, vr8[5]
-  vmfvr.s8   r13, fr4[1]
-  vmfvr.s16  r23, vr15[13]
-  vmtvr.u8   vr5[0],  r16
-  vmtvr.u16  fr4[7],  r10
-  vmtvr.u32  vr15 [ 15 ] ,  r10
-  vdup.8     vr1,  vr10[10]
-  vdup.16    vr15,  fr10[1]
-  vdup.32    fr7,  fr10[5]
-    vmov         vr2, vr3
-    vcadd.eu8    vr2, vr3
-    vcadd.eu16    vr2, vr3
-    vcadd.es8     vr2, vr3
-    vcadd.es16    vr2, vr3
-    vmov.eu8      vr2, vr3
-    vmov.eu16     vr2, vr3
-    vmov.es8      vr2, vr3
-    vmov.es16     vr2, vr3
-    vmov.u16.l    vr2, vr3
-    vmov.u32.l    vr2, vr3
-    vmov.s16.l    vr2, vr3
-    vmov.s32.l    vr2, vr3
-    vmov.u16.sl    vr2, vr3
-    vmov.u32.sl    vr2, vr3
-    vmov.s16.sl    vr2, vr3
-    vmov.s32.sl    vr2, vr3
-    vmov.u16.h    vr2, vr3
-    vmov.u32.h    vr2, vr3
-    vmov.s16.h    vr2, vr3
-    vmov.s32.h    vr2, vr3
-    vmov.u16.rh    vr2, vr3
-    vmov.u32.rh    vr2, vr3
-    vmov.s16.rh    vr2, vr3
-    vmov.s32.rh    vr2, vr3
-    vstou.u16.sl    vr2, vr3
-    vstou.u32.sl    vr2, vr3
-    vstou.s16.sl    vr2, vr3
-    vstou.s32.sl    vr2, vr3
-    vrev.8        vr2, vr3
-    vrev.16       vr2, vr3
-    vrev.32       vr2, vr3
-    vcnt1.8       vr2, vr3
-    vclz.8        vr2, vr3
-    vclz.16       vr2, vr3
-    vclz.32       vr2, vr3
-    vcls.u8       vr2, vr3
-    vcls.u16      vr2, vr3
-    vcls.u32      vr2, vr3
-    vcls.s8       vr2, vr3
-    vcls.s16      vr2, vr3
-    vcls.s32      vr2, vr3
-    vabs.s8       vr2, vr3
-    vabs.s16      vr2, vr3
-    vabs.s32      vr2, vr3
-    vabs.u8.s     vr2, vr3
-    vabs.u16.s    vr2, vr3
-    vabs.u32.s    vr2, vr3
-    vabs.s8.s     vr2, vr3
-    vabs.s16.s    vr2, vr3
-    vabs.s32.s    vr2, vr3
-    vneg.u8       vr2, vr3
-    vneg.u16      vr2, vr3
-    vneg.u32      vr2, vr3
-    vneg.s8       vr2, vr3
-    vneg.s16      vr2, vr3
-    vneg.s32      vr2, vr3
-    vneg.u8.s     vr2, vr3
-    vneg.u16.s    vr2, vr3
-    vneg.u32.s    vr2, vr3
-    vneg.s8.s     vr2, vr3
-    vneg.s16.s    vr2, vr3
-    vneg.s32.s    vr2, vr3
-    vcmphsz.u8    vr2, vr3
-    vcmphsz.u16    vr2, vr3
-    vcmphsz.u32    vr2, vr3
-    vcmphsz.s8    vr2, vr3
-    vcmphsz.s16    vr2, vr3
-    vcmphsz.s32    vr2, vr3
-    vcmpltz.u8    vr2, vr3
-    vcmpltz.u16    vr2, vr3
-    vcmpltz.u32    vr2, vr3
-    vcmpltz.s8    vr2, vr3
-    vcmpltz.s16    vr2, vr3
-    vcmpltz.s32    vr2, vr3
-    vcmpnez.u8    vr2, vr3
-    vcmpnez.u16    vr2, vr3
-    vcmpnez.u32    vr2, vr3
-    vcmpnez.s8     vr2, vr3
-    vcmpnez.s8     vr2, vr3
-    vcmpnez.s16    vr2, vr3
-    vcmpnez.s32    vr2, vr3
-    vtrch.8         vr2, vr3, vr4
+    vstrq.8          vr2, (r2, r3 << 0)
+    vstrq.16         vr2, (r2, r3 << 0)
+    vstrq.32         vr2, (r2, r3 << 0)
+    vldrq.8          vr2, (r2, r3 << 0)
+    vldrq.16         vr2, (r2, r3 << 0)
+    vldrq.32         vr2, (r2, r3 << 0)
+    vstrd.8          vr2, (r2, r3 << 0)
+    vstrd.16         vr2, (r2, r3 << 0)
+    vstrd.32         vr2, (r2, r3 << 0)
+    vldrd.8          vr2, (r2, r3 << 0)
+    vldrd.16         vr2, (r2, r3 << 0)
+    vldrd.32         vr2, (r2, r3 << 0)
+    vldq.8           vr2, (r2, 16)
+    vldq.16          vr2, (r2, 16)
+    vldq.32          vr2, (r2, 16)
+    vstq.8           vr2, (r2, 16)
+    vstq.16          vr2, (r2, 16)
+    vstq.32          vr2, (r2, 16)
+    vldd.8           vr2, (r2, 16)
+    vldd.16          vr2, (r2, 16)
+    vldd.32          vr2, (r2, 16)
+    vstd.8           vr2, (r2, 16)
+    vstd.16          vr2, (r2, 16)
+    vstd.32          vr2, (r2, 16)
+    vmulsh           r30, r1
+    vmulsha          r0,  r31
+    vmulsw           r12, r12
+    vmulswa          r28, r21
+    vmulsws          r1,  r4
+    vmfvr.u8         r1,  vr2[9]
+    vmfvr.u16        r3,  fr4[0]
+    vmfvr.u32        r31, vr8[5]
+    vmfvr.s8         r13, fr4[1]
+    vmfvr.s16        r23, vr15[13]
+    vmtvr.u8         vr5[0],  r16
+    vmtvr.u16        fr4[7],  r10
+    vmtvr.u32        vr15 [ 15 ] ,  r10
+    vdup.8           vr1,  vr10[10]
+    vdup.16          vr15,  fr10[1]
+    vdup.32          fr7,  fr10[5]
+    vmov             vr2, vr3
+    vcadd.eu8        vr2, vr3
+    vcadd.eu16       vr2, vr3
+    vcadd.es8        vr2, vr3
+    vcadd.es16       vr2, vr3
+    vmov.eu8         vr2, vr3
+    vmov.eu16        vr2, vr3
+    vmov.es8         vr2, vr3
+    vmov.es16        vr2, vr3
+    vmov.u16.l       vr2, vr3
+    vmov.u32.l       vr2, vr3
+    vmov.s16.l       vr2, vr3
+    vmov.s32.l       vr2, vr3
+    vmov.u16.sl      vr2, vr3
+    vmov.u32.sl      vr2, vr3
+    vmov.s16.sl      vr2, vr3
+    vmov.s32.sl      vr2, vr3
+    vmov.u16.h       vr2, vr3
+    vmov.u32.h       vr2, vr3
+    vmov.s16.h       vr2, vr3
+    vmov.s32.h       vr2, vr3
+    vmov.u16.rh      vr2, vr3
+    vmov.u32.rh      vr2, vr3
+    vmov.s16.rh      vr2, vr3
+    vmov.s32.rh      vr2, vr3
+    vstou.u16.sl     vr2, vr3
+    vstou.u32.sl     vr2, vr3
+    vstou.s16.sl     vr2, vr3
+    vstou.s32.sl     vr2, vr3
+    vrev.8           vr2, vr3
+    vrev.16          vr2, vr3
+    vrev.32          vr2, vr3
+    vcnt1.8          vr2, vr3
+    vclz.8           vr2, vr3
+    vclz.16          vr2, vr3
+    vclz.32          vr2, vr3
+    vcls.u8          vr2, vr3
+    vcls.u16         vr2, vr3
+    vcls.u32         vr2, vr3
+    vcls.s8          vr2, vr3
+    vcls.s16         vr2, vr3
+    vcls.s32         vr2, vr3
+    vabs.s8          vr2, vr3
+    vabs.s16         vr2, vr3
+    vabs.s32         vr2, vr3
+    vabs.u8.s        vr2, vr3
+    vabs.u16.s       vr2, vr3
+    vabs.u32.s       vr2, vr3
+    vabs.s8.s        vr2, vr3
+    vabs.s16.s       vr2, vr3
+    vabs.s32.s       vr2, vr3
+    vneg.u8          vr2, vr3
+    vneg.u16         vr2, vr3
+    vneg.u32         vr2, vr3
+    vneg.s8          vr2, vr3
+    vneg.s16         vr2, vr3
+    vneg.s32         vr2, vr3
+    vneg.u8.s        vr2, vr3
+    vneg.u16.s       vr2, vr3
+    vneg.u32.s       vr2, vr3
+    vneg.s8.s        vr2, vr3
+    vneg.s16.s       vr2, vr3
+    vneg.s32.s       vr2, vr3
+    vcmphsz.u8       vr2, vr3
+    vcmphsz.u16      vr2, vr3
+    vcmphsz.u32      vr2, vr3
+    vcmphsz.s8       vr2, vr3
+    vcmphsz.s16      vr2, vr3
+    vcmphsz.s32      vr2, vr3
+    vcmpltz.u8       vr2, vr3
+    vcmpltz.u16      vr2, vr3
+    vcmpltz.u32      vr2, vr3
+    vcmpltz.s8       vr2, vr3
+    vcmpltz.s16      vr2, vr3
+    vcmpltz.s32      vr2, vr3
+    vcmpnez.u8       vr2, vr3
+    vcmpnez.u16      vr2, vr3
+    vcmpnez.u32      vr2, vr3
+    vcmpnez.s8       vr2, vr3
+    vcmpnez.s8       vr2, vr3
+    vcmpnez.s16      vr2, vr3
+    vcmpnez.s32      vr2, vr3
+    vtrch.8          vr2, vr3, vr4
     vtrch.16         vr2, vr3, vr4
-    vtrch.32          vr2, vr3, vr4
-    vtrcl.8           vr2, vr3, vr4
-    vtrcl.16          vr2, vr3, vr4
-    vtrcl.32          vr2, vr3, vr4
-    vadd.u8           vr2, vr3, vr4
-    vadd.u16          vr2, vr3, vr4
-    vadd.u32          vr2, vr3, vr4
-    vadd.s8           vr2, vr3, vr4
-    vadd.s16          vr2, vr3, vr4
-    vadd.s32          vr2, vr3, vr4
-    vadd.eu8          vr2, vr3, vr4
-    vadd.eu16          vr2, vr3, vr4
-    vadd.es8           vr2, vr3, vr4
-    vadd.es16          vr2, vr3, vr4
-    vcadd.u8           vr2, vr3, vr4
-    vcadd.u16          vr2, vr3, vr4
-    vcadd.u32          vr2, vr3, vr4
-    vcadd.s8           vr2, vr3, vr4
-    vcadd.s16          vr2, vr3, vr4
-    vcadd.s32          vr2, vr3, vr4
-    vadd.xu16.sl      vr2, vr3, vr4
-    vadd.xu32.sl      vr2, vr3, vr4
-    vadd.xs16.sl      vr2, vr3, vr4
-    vadd.xs32.sl      vr2, vr3, vr4
-    vadd.xu16         vr2, vr3, vr4
-    vadd.xu32         vr2, vr3, vr4
-    vadd.xs16         vr2, vr3, vr4
-    vadd.xs32         vr2, vr3, vr4
-    vaddh.u8          vr2, vr3, vr4
+    vtrch.32         vr2, vr3, vr4
+    vtrcl.8          vr2, vr3, vr4
+    vtrcl.16         vr2, vr3, vr4
+    vtrcl.32         vr2, vr3, vr4
+    vadd.u8          vr2, vr3, vr4
+    vadd.u16         vr2, vr3, vr4
+    vadd.u32         vr2, vr3, vr4
+    vadd.s8          vr2, vr3, vr4
+    vadd.s16         vr2, vr3, vr4
+    vadd.s32         vr2, vr3, vr4
+    vadd.eu8         vr2, vr3, vr4
+    vadd.eu16        vr2, vr3, vr4
+    vadd.es8         vr2, vr3, vr4
+    vadd.es16        vr2, vr3, vr4
+    vcadd.u8         vr2, vr3, vr4
+    vcadd.u16        vr2, vr3, vr4
+    vcadd.u32        vr2, vr3, vr4
+    vcadd.s8         vr2, vr3, vr4
+    vcadd.s16        vr2, vr3, vr4
+    vcadd.s32        vr2, vr3, vr4
+    vadd.xu16.sl     vr2, vr3, vr4
+    vadd.xu32.sl     vr2, vr3, vr4
+    vadd.xs16.sl     vr2, vr3, vr4
+    vadd.xs32.sl     vr2, vr3, vr4
+    vadd.xu16        vr2, vr3, vr4
+    vadd.xu32        vr2, vr3, vr4
+    vadd.xs16        vr2, vr3, vr4
+    vadd.xs32        vr2, vr3, vr4
+    vaddh.u8         vr2, vr3, vr4
     vaddh.u16        vr2, vr3, vr4
     vaddh.u32        vr2, vr3, vr4
     vaddh.s8         vr2, vr3, vr4
@@ -357,3 +357,51 @@ vdsp_instructions:
     vicl.8           vr2, vr3, vr4
     vicl.16          vr2, vr3, vr4
     vicl.32          vr2, vr3, vr4
+    vshli.u8         vr0, vr2, 0
+    vshli.u8         vr0, vr2, 31
+    vshli.u16        vr0, vr2, 0
+    vshli.u16        vr0, vr2, 31
+    vshli.u32        vr0, vr2, 0
+    vshli.u32        vr0, vr2, 31
+    vshli.s8         vr0, vr2, 0
+    vshli.s8         vr0, vr2, 31
+    vshli.s16        vr0, vr2, 0
+    vshli.s16        vr0, vr2, 31
+    vshli.s32        vr0, vr2, 0
+    vshli.s32        vr0, vr2, 31
+    vshri.u8         vr0, vr2, 0
+    vshri.u8         vr0, vr2, 31
+    vshri.u16        vr0, vr2, 0
+    vshri.u16        vr0, vr2, 31
+    vshri.u32        vr0, vr2, 0
+    vshri.u32        vr0, vr2, 31
+    vshri.s8         vr0, vr2, 0
+    vshri.s8         vr0, vr2, 31
+    vshri.s16        vr0, vr2, 0
+    vshri.s16        vr0, vr2, 31
+    vshri.s32        vr0, vr2, 0
+    vshri.s32        vr0, vr2, 31
+    vshli.u8.s       vr0, vr2, 0
+    vshli.u8.s       vr0, vr2, 31
+    vshli.u16.s      vr0, vr2, 0
+    vshli.u16.s      vr0, vr2, 31
+    vshli.u32.s      vr0, vr2, 0
+    vshli.u32.s      vr0, vr2, 31
+    vshli.s8.s       vr0, vr2, 0
+    vshli.s8.s       vr0, vr2, 31
+    vshli.s16.s      vr0, vr2, 0
+    vshli.s16.s      vr0, vr2, 31
+    vshli.s32.s      vr0, vr2, 0
+    vshli.s32.s      vr0, vr2, 31
+    vshri.u8.r       vr0, vr2, 0
+    vshri.u8.r       vr0, vr2, 31
+    vshri.u16.r      vr0, vr2, 0
+    vshri.u16.r      vr0, vr2, 31
+    vshri.u32.r      vr0, vr2, 0
+    vshri.u32.r      vr0, vr2, 31
+    vshri.s8.r       vr0, vr2, 0
+    vshri.s8.r       vr0, vr2, 31
+    vshri.s16.r      vr0, vr2, 0
+    vshri.s16.r      vr0, vr2, 31
+    vshri.s32.r      vr0, vr2, 0
+    vshri.s32.r      vr0, vr2, 31

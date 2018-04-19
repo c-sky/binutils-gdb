@@ -4623,6 +4623,7 @@ if test $ac_compiler_gnu = yes; then
 else
   GCC=
 fi
+
 ac_test_CFLAGS=${CFLAGS+set}
 ac_save_CFLAGS=$CFLAGS
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $CC accepts -g" >&5
@@ -4703,6 +4704,12 @@ else
     CFLAGS=
   fi
 fi
+
+if test "${enable_any+set}" = set; then :
+enable_any=yes
+CFLAGS="$CFLAGS -DENABLE_ANY"
+fi
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $CC option to accept ISO C89" >&5
 $as_echo_n "checking for $CC option to accept ISO C89... " >&6; }
 if test "${ac_cv_prog_cc_c89+set}" = set; then :

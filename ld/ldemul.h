@@ -96,6 +96,10 @@ extern struct bfd_elf_version_expr *ldemul_new_vers_pattern
   (struct bfd_elf_version_expr *);
 extern void ldemul_extra_map_file_text
   (bfd *, struct bfd_link_info *, FILE *);
+extern void
+ldemul_before_write (void);
+extern void
+ldemul_before_finish (void);
 
 typedef struct ld_emulation_xfer_struct {
   /* Run before parsing the command line and script file.
@@ -196,10 +200,16 @@ typedef struct ld_emulation_xfer_struct {
   struct bfd_elf_version_expr * (*new_vers_pattern)
     (struct bfd_elf_version_expr *);
 
+  /* Called before ldwrite.  */
+  void (*before_write) (void);
+
   /* Called when printing the map file, in case there are
      emulation-specific sections for it.  */
   void (*extra_map_file_text)
     (bfd *, struct bfd_link_info *, FILE *);
+
+  /* Called after print map process.  */
+  void (*before_finish) (void);
 
 } ld_emulation_xfer_type;
 

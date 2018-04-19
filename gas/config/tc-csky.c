@@ -93,6 +93,13 @@
 #define POOL_END_LABEL    ".LE"
 #define POOL_START_LABEL  ".LS"
 
+/* Use 32bits to show the callgraph data version
+   0x       00           00              00             00
+          reserve    major number    child number    fix level
+   for example,the version V0.0.01 transform to the
+   value is 0x00000001*/
+#define TOOL_VERSION      0X00000001
+
 /* v1_relax_table used.  */
 /* These are the two types of relaxable instruction */
 #define COND_JUMP         1
@@ -350,6 +357,7 @@ struct _csky_insn
   struct _csky_macro_info *macro;
   /* insn size for check_literal.  */
   unsigned int isize;
+  unsigned int last_isize;
   /* max size of insn for relax frag_var.  */
   unsigned int max;
   /* Indicates which element is in _csky_opcode_info op[] array.  */
@@ -466,6 +474,9 @@ static int do_func_dump = 0;      /* dump literals after every function.  */
 static int do_br_dump = 1;        /* work for -mabr/-mno-abr, control the literals dump.  */
 static int do_intr_stack = -1;    /* control interrupt stack module, 801&802&803
                                      default open, 807&810, default close.  */
+static int do_callgraph_reloc = 0;  /* control to emit callgraph reloc information,
+                                       default close.  */
+
 static int do_callgraph_call= 1;  /* control to reserve function call related relocs,
                                      default on. This option hasn't implenment,
                                      we put it here for compatibility.  */
@@ -485,83 +496,85 @@ enum
 struct _csky_option_table csky_opts[] =
 {
   {"mlittle-endian",          &target_big_endian, 0, OPTS_OPERATION_ASSIGN,
-    "-mlittle-endian    \t\tmeans target is little-endian.\n"},
+    "-mlittle-endian\n\t\t\tmeans target is little-endian.\n"},
   {"EL",                      &target_big_endian, 0, OPTS_OPERATION_ASSIGN,
-    "-EL                \t\tAlias of -mlittle-endian.\n"},
+    "-EL\n\t\t\tAlias of -mlittle-endian.\n"},
   {"mbig-endian",             &target_big_endian, 1, OPTS_OPERATION_ASSIGN,
-    "-mbig-endian       \t\tmeans target is big-endian.\n"},
+    "-mbig-endian\n\t\t\tmeans target is big-endian.\n"},
   {"EB",                      &target_big_endian, 1, OPTS_OPERATION_ASSIGN,
-    "-EB                \t\tAlias of -mbig-endian.\n"},
+    "-EB\n\t\t\tAlias of -mbig-endian.\n"},
   {"fpic",                    &do_pic,        1, OPTS_OPERATION_ASSIGN, NULL},
   {"pic",                     &do_pic,        1, OPTS_OPERATION_ASSIGN, NULL},
   {"mljump",                  &do_long_jump,  1, OPTS_OPERATION_ASSIGN,
-    "-mljump    \t\t\tjbf,jbt,jbr transform to jmpi (def: dis,CK800 only)\n"},
+    "-mljump\n\t\t\tjbf,jbt,jbr transform to jmpi (def: dis,CK800 only)\n"},
   {"mno-ljump",               &do_long_jump,  0, OPTS_OPERATION_ASSIGN,
-    "-mno-ljump    \t\t\tdisable jbf,jbt,jbr transform to jmpi\n\t\t\t\t(def: dis,CK800 only)\n"},
+    "-mno-ljump\n\t\t\tdisable jbf,jbt,jbr transform to jmpi\n\t\t\t(def: dis,CK800 only)\n"},
   {"force2bsr",               &do_force2bsr,  1, OPTS_OPERATION_ASSIGN, NULL},
   {"mforce2bsr",              &do_force2bsr,  1, OPTS_OPERATION_ASSIGN,
-    "-mforce2bsr/force2bsr   \tenable force jbsr to bsr, takes priority over jsri2bsr\n\t\t\t\t(default: enable)\n"},
+    "-mforce2bsr/force2bsr\n\t\t\tenable force jbsr to bsr, takes priority over jsri2bsr\n\t\t\t(default: enable)\n"},
   {"no-force2bsr",            &do_force2bsr,  0, OPTS_OPERATION_ASSIGN, NULL},
   {"mno-force2bsr",           &do_force2bsr,  0, OPTS_OPERATION_ASSIGN,
-    "-mno-force2bsr/-no-force2bsr \tdisable force jbsr to bsr, takes priority over jsri2bsr\n"},
+    "-mno-force2bsr/-no-force2bsr\n\t\t\tdisable force jbsr to bsr, takes priority over jsri2bsr\n"},
   {"jsri2bsr",                &do_jsri2bsr,   1, OPTS_OPERATION_ASSIGN, NULL},
   {"mjsri2bsr",               &do_jsri2bsr,   1, OPTS_OPERATION_ASSIGN,
-    "-mjsri2bsr/-jsri2bsr    \tenable jsri to bsr transformation (default: enable)\n"},
+    "-mjsri2bsr/-jsri2bsr\n\t\t\tenable jsri to bsr transformation (default: enable)\n"},
   {"mno-jsri2bsr",             &do_jsri2bsr,   0, OPTS_OPERATION_ASSIGN,
-    "-mno-jsri2bsr    \t\tdisenable jsri to bsr transformation\n"},
+    "-mno-jsri2bsr\n\t\t\tdisenable jsri to bsr transformation\n"},
   {"no-jsri2bsr",            &do_jsri2bsr,   0, OPTS_OPERATION_ASSIGN,
-    "-no-jsri2bsr    \t\tshort name of -mno-jsri2bsr\n"},
+    "-no-jsri2bsr\n\t\t\tshort name of -mno-jsri2bsr\n"},
   {"mnolrw",                  &do_nolrw,      1, OPTS_OPERATION_ASSIGN, NULL},
   {"mno-lrw",                 &do_nolrw,      1, OPTS_OPERATION_ASSIGN,
-    "-mno-lrw    \t\t\timplement lrw as movih + ori, ignored when -manchor\n"},
+    "-mno-lrw\n\t\t\timplement lrw as movih + ori, ignored when -manchor\n"},
   {"mliterals-after-func",    &do_func_dump,  1, OPTS_OPERATION_ASSIGN,
-    "-mliterals-after-func    \tenable dump literals after every function\n"},
+    "-mliterals-after-func\n\t\t\tenable dump literals after every function\n"},
   {"mlaf",                    &do_func_dump,  1, OPTS_OPERATION_ASSIGN,
-    "-mlaf    \t\t\tshort name of -mliterals-after-func\n"},
+    "-mlaf\n\t\t\tshort name of -mliterals-after-func\n"},
   {"mno-literals-after-func", &do_func_dump,  0, OPTS_OPERATION_ASSIGN,
-    "-mno-literals-after-func   \tdisable dump literals after every function\n"},
+    "-mno-literals-after-func\n\t\t\tdisable dump literals after every function\n"},
   {"mno-laf",                 &do_func_dump,  0, OPTS_OPERATION_ASSIGN,
-    "-mno-laf    \t\t\tshort name of -mno-literals-after-func\n"},
+    "-mno-laf\n\t\t\tshort name of -mno-literals-after-func\n"},
   {"manchor",                 &do_anchor,     1, OPTS_OPERATION_ASSIGN,
-    "-m{no-}anchor    \t\t{dis}able implement lrw as addi rtb/rdb + offset\n"},
+    "-m{no-}anchor\n\t\t\t{dis}able implement lrw as addi rtb/rdb + offset\n"},
   {"mno-anchor",              &do_anchor,     0, OPTS_OPERATION_ASSIGN, NULL},
   {"melrw",                   &do_extend_lrw, 1, OPTS_OPERATION_ASSIGN,
-    "-m{no-}elrw    \t\t\t{dis}able extend lrw instruction and\n\t\t\t\t16 bits btesti instruction (def: dis,CK800 only)\n"},
+    "-m{no-}elrw\n\t\t\t{dis}able extend lrw instruction and\n\t\t\t16 bits btesti instruction (def: dis,CK800 only)\n"},
   {"mno-elrw",                &do_extend_lrw, 0, OPTS_OPERATION_ASSIGN, NULL},
   {"mliterals-after-br",      &do_br_dump,    1, OPTS_OPERATION_ASSIGN,
-    "-mliterals-after-br    \t\tdump literals after every br instruction\n"},
+    "-mliterals-after-br\n\t\t\tdump literals after every br instruction\n"},
   {"mlabr",                   &do_br_dump,    1, OPTS_OPERATION_ASSIGN,
-    "-mlabr    \t\t\tshort name of -mliterals-after-br\n"},
+    "-mlabr\n\t\t\tshort name of -mliterals-after-br\n"},
   {"mno-literals-after-br",   &do_br_dump,    0, OPTS_OPERATION_ASSIGN,
-    "-mno-literals-after-br    \tdisable dump literals after every br instruction\n"},
+    "-mno-literals-after-br\n\t\t\tdisable dump literals after every br instruction\n"},
   {"mno-labr",                &do_br_dump,    0, OPTS_OPERATION_ASSIGN,
-    "-mno-labr    \t\t\tshort name of -mno-literals-after-br\n"},
+    "-mno-labr\n\t\t\tshort name of -mno-literals-after-br\n"},
   {"mistack",                 &do_intr_stack, 1, OPTS_OPERATION_ASSIGN, NULL},
   {"mno-istack",              &do_intr_stack, 0, OPTS_OPERATION_ASSIGN, NULL},
   {"mcallgraph",              &do_callgraph_call, 1, OPTS_OPERATION_ASSIGN, NULL},
   {"mno-callgraph",           &do_callgraph_call, 0, OPTS_OPERATION_ASSIGN, NULL},
+  {"mcallgraph-reloc",        &do_callgraph_reloc, 1, OPTS_OPERATION_ASSIGN, NULL},
+  {"mno-callgraph-reloc",     &do_callgraph_reloc, 0, OPTS_OPERATION_ASSIGN, NULL},
 #ifdef INCLUDE_BRANCH_STUB
   {"mbranch-stub",            &do_use_branchstub, 1, OPTS_OPERATION_ASSIGN, NULL},
   {"mno-branch-stub",         &do_use_branchstub, 0, OPTS_OPERATION_ASSIGN, NULL},
 #endif
   {"mmp",                     (int *)&other_flag, CSKY_ARCH_MP,    OPTS_OPERATION_OR,
-    "-mmp    \t\t\tsupport multiple processor instructions\n"},
+    "-mmp\n\t\t\tsupport multiple processor instructions\n"},
   {"mcp",                     (int *)&other_flag, CSKY_ARCH_CP,    OPTS_OPERATION_OR,
-    "-mcp    \t\t\tsupport coprocessor instructions\n"},
+    "-mcp\n\t\t\tsupport coprocessor instructions\n"},
   {"mdsp",                    (int *)&dsp_flag, CSKY_DSP_FLAG_V1,   OPTS_OPERATION_OR,
-    "-mdsp    \t\t\tsupport csky DSP instructions\n"},
+    "-mdsp\n\t\t\tsupport csky DSP instructions\n"},
   {"mcache",                  (int *)&other_flag, CSKY_ARCH_CACHE, OPTS_OPERATION_OR,
-    "-mcache    \t\t\tsupport cache prefetch instruction\n"},
+    "-mcache\n\t\t\tsupport cache prefetch instruction\n"},
   {"msecurity",               (int *)&other_flag, CSKY_ARCH_MAC,   OPTS_OPERATION_OR,
-    "-msecurity    \t\t\tsupport csky security instructions\n"},
+    "-msecurity\n\t\t\tsupport csky security instructions\n"},
   {"mhard-float",             (int *)&other_flag, CSKY_ARCH_FLOAT, OPTS_OPERATION_OR,
-    "-mhard-float    \t\tsupport hard float instructions\n"},
+    "-mhard-float\n\t\tsupport hard float instructions\n"},
   {"mtrust",                 (int *)&isa_flag, CSKY_ISA_TRUST, OPTS_OPERATION_OR,
-    "-mtrust    \t\t\tsupport csky trust instructions\n"},
+    "-mtrust\n\t\t\tsupport csky trust instructions\n"},
   {"medsp",                 (int *)&dsp_flag, CSKY_DSP_FLAG_V2, OPTS_OPERATION_OR,
-    "-medsp    \t\t\tsupport csky enhance dsp instructions\n"},
+    "-medsp\n\t\t\tsupport csky enhance dsp instructions\n"},
   {"mvdsp",                 (int *)&isa_flag, CSKY_ISA_VDSP, OPTS_OPERATION_OR,
-    "-mvdsp    \t\t\tsupport csky vector dsp instructions\n"},
+    "-mvdsp\n\t\t\tsupport csky vector dsp instructions\n"},
   {NULL, NULL, 0, 0, NULL}
 };
 
@@ -664,6 +677,8 @@ void
 md_number_to_chars (char * buf, valueT val, int n);
 long
 md_pcrel_from_section (fixS * fixP, segT seg);
+static void
+stack_size_data_finish (void);
 
 /* CSKY architecture table.  */
 const struct _csky_arch csky_archs[] =
@@ -673,12 +688,14 @@ const struct _csky_arch csky_archs[] =
   {"ck801",  CSKY_ARCH_801,  bfd_mach_ck801},
   {"ck802",  CSKY_ARCH_802,  bfd_mach_ck802},
   {"ck803",  CSKY_ARCH_803,  bfd_mach_ck803},
-#define CSKY_ARCH_807_BASE    CSKY_ARCH_807 | CSKY_ARCH_DSP
-#define CSKY_ARCH_810_BASE    CSKY_ARCH_810 | CSKY_ARCH_DSP
-  {"ck807",  CSKY_ARCH_807_BASE,  bfd_mach_ck807},
-  {"ck810",  CSKY_ARCH_810_BASE,  bfd_mach_ck810},
+  {"ck807",  CSKY_ARCH_807,  bfd_mach_ck807},
+  {"ck810",  CSKY_ARCH_810,  bfd_mach_ck810},
+  {"ck860",  CSKY_ARCH_860,  bfd_mach_ck860},
   {NULL, 0, 0}
 };
+
+#define CSKY_ARCH_807_BASE    CSKY_ARCH_807 | CSKY_ARCH_DSP
+#define CSKY_ARCH_810_BASE    CSKY_ARCH_810 | CSKY_ARCH_DSP
 
 /* CSKY cpus table.  */
 const struct _csky_cpu csky_cpus[] =
@@ -743,7 +760,7 @@ const struct _csky_cpu csky_cpus[] =
   {"ck803efhr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803, "-mcpu=ck803efhr1"},
   {"ck803ftr1", CSKY_ARCH_803 | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803ftr1"},
   {"ck803eftr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803eftr1"},
-  {"ck803ehftr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803efhtr1"},
+  {"ck803efhtr1", CSKY_ARCH_803 | CSKY_ARCH_DSP | CSKY_ARCH_FLOAT, CSKY_ISA_803R1 | CSKY_ISA_DSP_ENHANCE | CSKY_ISA_FLOAT_803 | CSKY_ISA_TRUST, "-mcpu=ck803efhtr1"},
 
   {"ck803s", CSKY_ARCH_803, CSKY_ISA_803R1 , "-mcpu=ck803s"},
   {"ck803se", CSKY_ARCH_803 | CSKY_ARCH_DSP, CSKY_ISA_803R1 | CSKYV2_ISA_DSP, "-mcpu=ck803se"},
@@ -771,9 +788,13 @@ const struct _csky_cpu csky_cpus[] =
   {"ck810v", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_VDSP, "-mcpu=ck810v"},
   {"ck810f", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_810, "-mcpu=ck810f"},
   {"ck810t", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_TRUST, "-mcpu=ck810t"},
-  {"ck810tv", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_TRUST, "-mcpu=ck810tv"},
-  {"ck810ft", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_VDSP | CSKY_ISA_FLOAT_810 | CSKY_ISA_TRUST, "-mcpu=ck810ft"},
+  {"ck810tv", CSKY_ARCH_810_BASE, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_VDSP | CSKY_ISA_TRUST, "-mcpu=ck810tv"},
+  {"ck810ft", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_FLOAT_810 | CSKY_ISA_TRUST, "-mcpu=ck810ft"},
   {"ck810ftv", CSKY_ARCH_810_BASE | CSKY_ARCH_FLOAT, CSKY_ISA_810 | CSKYV2_ISA_DSP | CSKY_ISA_VDSP | CSKY_ISA_FLOAT_810 | CSKY_ISA_TRUST, "-mcpu=ck810ftv"},
+
+#define CSKY_ISA_860    (CSKY_ISA_810 | CSKYV2_ISA_10E60)
+#define CSKY_ISA_FLOAT_860 (CSKY_ISA_FLOAT_810)
+  {"ck860", CSKY_ARCH_860, CSKY_ISA_860, "-mcpu=ck860"},
 
   {NULL, 0, 0, NULL}
 };
@@ -1782,6 +1803,12 @@ md_begin (void)
     }
   else if (arch_flag != 0)
     {
+      if ((arch_flag & CSKY_ARCH_MASK) == CSKY_ARCH_810
+          || ((arch_flag & CSKY_ARCH_MASK) == CSKY_ARCH_807)) {
+          /* CK807 and CK810 have DSP instruction default.  */
+          mach_flag |= CSKY_ARCH_DSP;
+      }
+
       mach_flag |= arch_flag | flags;
     }
   else
@@ -1854,18 +1881,35 @@ md_begin (void)
     {
       if (((CSKY_ARCH_MASK & mach_flag) == CSKY_ARCH_803))
         {
-          /* In 803, dspv1 is conflict with dspv2. We keep dspv2.  */
-          if ((dsp_flag & CSKY_DSP_FLAG_V1) && (dsp_flag & CSKY_DSP_FLAG_V2))
-            as_warn ("Option -mdsp is conflit with -medsp, only enable -medsp here");
-          isa_flag &= ~(CSKY_ISA_MAC_DSP | CSKY_ISA_DSP);
-          isa_flag |= CSKY_ISA_DSP_ENHANCE;
+          if ((dsp_flag & CSKY_DSP_FLAG_V1))
+            {
+              isa_flag |= (CSKY_ISA_MAC_DSP | CSKY_ISA_DSP);
+              isa_flag &= ~CSKY_ISA_DSP_ENHANCE;
+            }
+
+          if ((dsp_flag & CSKY_DSP_FLAG_V2))
+            {
+              isa_flag &= ~(CSKY_ISA_MAC_DSP | CSKY_ISA_DSP);
+              isa_flag |= CSKY_ISA_DSP_ENHANCE;
+            }
+
+          if ((dsp_flag & CSKY_DSP_FLAG_V1)
+              && (dsp_flag & CSKY_DSP_FLAG_V2))
+            {
+              /* In 803, dspv1 is conflict with dspv2. We keep dspv2.  */
+              as_warn ("Option -mdsp is conflit with -medsp, only enable -medsp here");
+              isa_flag &= ~(CSKY_ISA_MAC_DSP | CSKY_ISA_DSP);
+              isa_flag |= CSKY_ISA_DSP_ENHANCE;
+            }
         }
       else
         {
-          isa_flag &= ~CSKY_ISA_DSP_ENHANCE;
-          as_warn ("-medsp optoin is only supported in arch ck803s, -medsp will be ignored");
+          if (dsp_flag & CSKY_DSP_FLAG_V2)
+            {
+              isa_flag &= ~CSKY_ISA_DSP_ENHANCE;
+              as_warn ("-medsp optoin is only supported in arch ck803s, -medsp will be ignored");
+            }
         }
-      ;
     }
 
   if (do_use_branchstub == -1)
@@ -2021,6 +2065,7 @@ parse_type_ctrlreg (char** oper)
     {
       /* The control registers are aliased.  */
       struct csky_reg *reg = &csky_ctrl_regs[0];
+      string_tolower(*oper);
       while (reg->name)
         {
           if (memcmp (*oper, reg->name, strlen (reg->name)) == 0
@@ -2369,8 +2414,8 @@ csky_get_freg_val (char *str, int *len)
 {
   int reg = 0;
   char *s = NULL;
-  if ((str[0] == 'v' || (str[0] == 'f'))
-       && (str[1] == 'r'))
+  if ((TOLOWER(str[0]) == 'v' || (TOLOWER(str[0]) == 'f'))
+       && (TOLOWER(str[1]) == 'r'))
     {
       /* It is fpu register.  */
       s = &str[2];
@@ -2619,6 +2664,7 @@ is_reg_lshift_illegal (char **oper, int is_float)
   return TRUE;
 }
 
+/* If imm in range, return true, otherwise false.  */
 static bfd_boolean
 is_imm_over_range (char **oper, int min, int max, int ext)
 {
@@ -3290,7 +3336,6 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
         }
       /* For csky v1 bmask inst.  */
       case OPRND_TYPE_IMM5b_BMASKI:
-
         if (!is_imm_over_range (oper, 8, 31, 0))
           {
             unsigned int mask_val = csky_insn.val[csky_insn.idx - 1];
@@ -3308,6 +3353,18 @@ get_operand_value (struct _csky_opcode_info *op, char **oper, struct operand *op
               }
           }
         return TRUE;
+      /* For vshri.T and vshli.T.  */
+      case OPRND_TYPE_IMM5b_VSH:
+        if (is_imm_over_range (oper, 0, 31, -1))
+          {
+            int val = csky_insn.val[csky_insn.idx - 1];
+            val =  (val << 1) | (val >> 4);
+            val &= 0x1f;
+            csky_insn.val[csky_insn.idx - 1] = val;
+            return TRUE;
+          }
+        return FALSE;
+
       /* For csky v2 bmask, which will transfer to 16bits movi.  */
       case OPRND_TYPE_IMM8b_BMASKI:
         if (is_imm_over_range (oper, 1, 8, -1))
@@ -4058,7 +4115,7 @@ csky_generate_frags (void)
     }
   else
     {
-      if (csky_insn.opcode->relax)
+      if (csky_insn.opcode->flags & CSKY_INSN_FLAGS_RELAX)
         {
           /* Generate the relax infomation.  */
         csky_insn.output = frag_var (rs_machine_dependent,
@@ -4091,6 +4148,19 @@ csky_generate_frags (void)
                            csky_insn.opcode->reloc32);
             }
         }
+    }
+
+  if ((csky_insn.opcode->flags & CSKY_INSN_FLAGS_CALLG) && do_callgraph_call)
+    {
+      /* Setup callgraph relocation.  */
+      if (strstr (csky_insn.opcode->mnemonic, "jsri"))
+        fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                     0, &(litpool+(csky_insn.e1.X_add_number >> 2))->e,
+                     0, BFD_RELOC_CKCORE_CALLGRAPH);
+      else
+        fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                     0, &csky_insn.e1,
+                     0, BFD_RELOC_CKCORE_CALLGRAPH);
     }
   return TRUE;
 }
@@ -4269,6 +4339,8 @@ md_assemble (char *str)
         check_literals (csky_insn.opcode->transfer, csky_insn.max);
     }
 
+  csky_insn.last_isize = csky_insn.isize;
+
   insn_reloc = BFD_RELOC_NONE;
 }
 
@@ -4286,7 +4358,7 @@ md_parse_option (int c, const char * arg)
             {
               if (arg != NULL
                   && memcmp(arg - 1, csky_opts[i].name,
-                         strlen(csky_opts[i].name)) == 0
+                         strlen(arg-1)) == 0
                   && !ISALPHA(*(arg - 1 + strlen(csky_opts[i].name))))
                 {
                   if (csky_opts[i].ver)
@@ -4875,6 +4947,7 @@ md_section_align (segT segment ATTRIBUTE_UNUSED,
 void md_csky_end (void)
 {
   dump_literals (0);
+  stack_size_data_finish ();
 }
 
 /* Return the address within the segment that a PC-relative fixup is
@@ -5058,11 +5131,14 @@ md_apply_fix (fixS   *fixP,
               ta = (struct tls_addend*)(fixP->fx_offset);
               fixP->fx_offset= (fixP->fx_frag->fr_address + fixP->fx_where)
                                 - (ta->frag->fr_address + ta->offset);
-              *valP = fixP->fx_offset;
            }
          case BFD_RELOC_CKCORE_TLS_LE32:
          case BFD_RELOC_CKCORE_TLS_LDO32:
            S_SET_THREAD_LOCAL (fixP->fx_addsy);
+           break;
+         case BFD_RELOC_CKCORE_CALLGRAPH:
+           if (!do_callgraph_reloc)
+             fixP->fx_done = 1;
            break;
          default:
            break;
@@ -5118,7 +5194,6 @@ md_apply_fix (fixS   *fixP,
           ta = (struct tls_addend*)(fixP->fx_offset);
           fixP->fx_offset= (fixP->fx_frag->fr_address + fixP->fx_where)
                              - (ta->frag->fr_address + ta->offset);
-          *valP = fixP->fx_offset;
         }
       case BFD_RELOC_CKCORE_TLS_LE32:
       case BFD_RELOC_CKCORE_TLS_LDO32:
@@ -5150,11 +5225,15 @@ md_apply_fix (fixS   *fixP,
               nval |= CSKYV1_INST_BSR;
               csky_write_insn (buf, nval, 2);
               fixP->fx_done = 1;
+              if (do_callgraph_call)
+                fixP->fx_addsy = section_symbol (seg);
             }
           else
             {
               *valP = 0;
             }
+          if (do_callgraph_call)
+            fixP->fx_done = 0;
         }
         break;
       case BFD_RELOC_CKCORE_PCREL_JSR_IMM26BY2:
@@ -5179,9 +5258,22 @@ md_apply_fix (fixS   *fixP,
                   opcode = CSKYV2_INST_JSR_R26;
                   csky_write_insn (buf + 4, opcode, 4);
                 }
-              fixP->fx_done = 1;
+              if (do_callgraph_call)
+                {
+                  fixP->fx_addsy = section_symbol (seg);
+                  fixP->fx_done = 0;
+                }
+              else
+                fixP->fx_done = 1;
             }
         }
+        break;
+
+      case BFD_RELOC_CKCORE_CALLGRAPH:
+        if (!do_callgraph_reloc)
+          fixP->fx_done = 1;
+        else
+          fixP->fx_done = 0;
         break;
 
       default:
@@ -6105,7 +6197,6 @@ v1_work_fpu_readd (void)
   return FALSE;
 }
 
-/* The followings are for csky pseudo handling.  */
 
 bfd_boolean
 v1_work_jbsr (void)
@@ -6116,6 +6207,10 @@ v1_work_jbsr (void)
       /* Generate fixup BFD_RELOC_CKCORE_PCREL_IMM11BY2.  */
       fix_new_exp (frag_now, csky_insn.output - frag_now->fr_literal,
                    2, & csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM11BY2);
+      /* Setup Callgraph relocation.  */
+      fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                   0, &csky_insn.e1,
+                   0, BFD_RELOC_CKCORE_CALLGRAPH);
     }
   else
     {
@@ -6136,6 +6231,11 @@ v1_work_jbsr (void)
       /* Generate fixup BFD_RELOC_CKCORE_PCREL_IMM8BY4.  */
       fix_new_exp (frag_now, csky_insn.output - frag_now->fr_literal,
                    2, & csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM8BY4);
+
+      /* Setup Callgraph relocation.  */
+      fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                   0, &(litpool+(csky_insn.e1.X_add_number >> 2))->e,
+                   0, BFD_RELOC_CKCORE_CALLGRAPH);
 
       if (csky_insn.e1.X_op != O_absent && do_jsri2bsr)
         {
@@ -6219,6 +6319,22 @@ v2_work_addi (void)
           csky_insn.inst |=  (csky_insn.val[1] - 1);
           csky_insn.output = frag_more (2);
         }
+      else if (csky_insn.val[0] == 28
+               && (csky_insn.val[1] >=1 && csky_insn.val[1] <= 0x40000)
+               && csky_insn.flag_force != INSN_OPCODE16F)
+        {
+          csky_insn.inst = 0xcc1c0000 | (csky_insn.val[0] << 21);
+          csky_insn.isize = 4;
+          csky_insn.output = frag_more (4);
+          if (insn_reloc == BFD_RELOC_CKCORE_GOTOFF)
+            {
+              fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                           4, &csky_insn.e1, 0, BFD_RELOC_CKCORE_GOTOFF_IMM18);
+            }
+          else
+            csky_insn.inst |= (csky_insn.val[1] - 1);
+        }
+
       else if ((csky_insn.val[1] >= 1 && csky_insn.val[1] <= 0x10000)
                && csky_insn.flag_force != INSN_OPCODE16F)
         {
@@ -6856,6 +6972,8 @@ v2_work_jbsr (void)
       csky_insn.output = frag_more (4);
       fix_new_exp (frag_now, csky_insn.output - frag_now->fr_literal,
                    4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM26BY2);
+      fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                   0, &csky_insn.e1, 0, BFD_RELOC_CKCORE_CALLGRAPH);
       csky_insn.isize = 4;
       csky_insn.inst = CSKYV2_INST_BSR32;
     }
@@ -6879,6 +6997,11 @@ v2_work_jbsr (void)
         }
       csky_insn.inst = CSKYV2_INST_JSRI32;
       csky_insn.isize = 4;
+
+      /* Setup callgraph relocation.  */
+      fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                   0, &(litpool+(csky_insn.e1.X_add_number >> 2))->e,
+                   0, BFD_RELOC_CKCORE_CALLGRAPH);
       if ((mach_flag & CSKY_ARCH_MASK) == CSKY_ARCH_810)
         {
           csky_write_insn(csky_insn.output, csky_insn.inst, csky_insn.isize);
@@ -7091,18 +7214,33 @@ dsp_work_bloop (void)
   csky_insn.inst = csky_insn.opcode->op32[0].opcode | ( reg << 16);
   csky_insn.isize = 4;
 
-  if (csky_insn.e1.X_op == O_symbol
+  if (csky_insn.number == 3
+      && csky_insn.e1.X_op == O_symbol
       && csky_insn.e2.X_op == O_symbol)
     {
-        fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                     4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_BLOOP_IMM12BY4);
-        fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
-                     4, &csky_insn.e2, 1, BFD_RELOC_CKCORE_PCREL_BLOOP_IMM4BY4);
+      fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                   4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_BLOOP_IMM12BY4);
+      fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                   4, &csky_insn.e2, 1, BFD_RELOC_CKCORE_PCREL_BLOOP_IMM4BY4);
+    }
+  else if (csky_insn.number == 2
+           && csky_insn.e1.X_op == O_symbol)
+    {
+      fix_new_exp (frag_now, csky_insn.output-frag_now->fr_literal,
+                   4, &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_BLOOP_IMM12BY4);
+      if (csky_insn.last_isize == 2)
+        csky_insn.inst |= (0xf << 12);
+      else if (csky_insn.last_isize != 0)
+        csky_insn.inst |= (0xe << 12);
+      else
+        csky_show_info (ERROR_UNDEFINE, 0, "bloop can not be the first instruction"\
+                        " while the end lable is not specific.\n", NULL);
     }
 
   csky_write_insn (csky_insn.output, csky_insn.inst, csky_insn.isize);
   return TRUE;
 }
+
 /* The followings are for csky pseudo handling.  */
 
 static void
@@ -7386,6 +7524,39 @@ csky_stack_size (int arg ATTRIBUTE_UNUSED)
     last_stack_size_data = &((*last_stack_size_data)->next);
 
   *last_stack_size_data = sse;
+}
+
+static void
+stack_size_data_finish (void)
+{
+  segT stack_size_seg;
+  stack_size_entry *sse = NULL;
+  expressionS exp;
+
+  if (all_stack_size_data == NULL)
+    return;
+  else
+    { /* do nothing */
+    }
+
+  stack_size_seg = subseg_new (".csky_stack_size", 0);
+  bfd_set_section_flags (stdoutput, stack_size_seg,
+          SEC_READONLY);
+  subseg_set (stack_size_seg, 0);
+  record_alignment (stack_size_seg, 4);
+
+  /*Add tooltrain version number */
+  md_number_to_chars (frag_more (4), TOOL_VERSION, 4);
+  /*Add stack size information*/
+  for (sse = all_stack_size_data; sse; sse = sse->next)
+    {
+      exp.X_op = O_symbol;
+      exp.X_add_symbol = sse->function;
+      exp.X_op_symbol = NULL;
+      exp.X_add_number = 0;
+      emit_expr (&exp, 4);
+      md_number_to_chars (frag_more (4), sse->stack_size, 4);
+    }
 }
 
 /* This table describes all the machine specific pseudo-ops the assembler

@@ -83,7 +83,8 @@ enum statement_enum
   lang_padding_statement_enum,
   lang_group_statement_enum,
   lang_insert_statement_enum,
-  lang_constructors_statement_enum
+  lang_constructors_statement_enum,
+  lang_any_statement_enum
 };
 
 typedef struct lang_statement_header_struct
@@ -343,6 +344,8 @@ typedef struct input_section_userdata_struct
 
 typedef struct lang_wild_statement_struct lang_wild_statement_type;
 
+typedef struct lang_any_statement_struct lang_any_statement_type;
+
 typedef void (*callback_t) (lang_wild_statement_type *, struct wildcard_list *,
 			    asection *, struct flag_info *,
 			    lang_input_statement_type *, void *);
@@ -377,6 +380,40 @@ struct lang_wild_statement_struct
   struct wildcard_list *handler_data[4];
   lang_section_bst_type *tree;
   struct flag_info *section_flag_list;
+};
+
+struct any_statement_list {
+  lang_any_statement_type *any_state;
+  struct any_statement_list *next;
+};
+
+struct any_statement_list_info {
+  struct any_statement_list *head;
+  struct any_statement_list **tail;
+};
+
+struct section_list {
+  asection *section;
+  struct any_statement_list_info match_state;
+  struct section_list *next;
+};
+
+struct section_list_info {
+  struct section_list *head;
+  struct section_list **tail;
+};
+
+
+struct lang_any_statement_struct
+{
+  lang_statement_header_type header;
+  lang_statement_list_type children;
+  struct section_list_info match_sections;
+  unsigned long long region_left;
+  unsigned long long vma_region_left;
+  unsigned long long lma_region_left;
+  lang_output_section_statement_type *os;
+  bfd_vma current_dot;
 };
 
 typedef struct lang_address_statement_struct
@@ -433,6 +470,7 @@ typedef union lang_statement_union
   lang_padding_statement_type padding_statement;
   lang_group_statement_type group_statement;
   lang_insert_statement_type insert_statement;
+  lang_any_statement_type any_statement;
 } lang_statement_union_type;
 
 /* This structure holds information about a program header, from the
@@ -487,6 +525,16 @@ struct orphan_save
   lang_statement_union_type **stmt;
   lang_output_section_statement_type **os_tail;
 };
+
+/* Used by .ANY statement. */
+enum any_sort_order_type
+{
+    ANY_SORT_ORDER_CMDLINE,
+    ANY_SORT_ORDER_DESCENDING_SIZE
+};
+
+extern bfd_vma any_contingency;
+extern enum any_sort_order_type any_sort_order;
 
 struct asneeded_minfo
 {
@@ -550,6 +598,8 @@ extern void lang_add_target
   (const char *);
 extern void lang_add_wild
   (struct wildcard_spec *, struct wildcard_list *, bfd_boolean);
+extern void lang_add_any
+  (struct flag_info *, struct wildcard_list *);
 extern void lang_add_map
   (const char *);
 extern void lang_add_fill

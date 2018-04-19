@@ -93,6 +93,7 @@ static int error_index;
 %type <fill> fill_opt fill_exp
 %type <name_list> exclude_name_list
 %type <wildcard_list> file_NAME_list
+%type <wildcard_list> section_NAME_list
 %type <flag_info_list> sect_flag_list
 %type <flag_info> sect_flags
 %type <name> memspec_opt casesymlist
@@ -159,6 +160,7 @@ static int error_index;
 %type <versnode> vers_tag
 %type <deflist> verdep
 %token INPUT_DYNAMIC_LIST
+%token ANY
 
 %%
 
@@ -616,8 +618,38 @@ file_NAME_list:
 			}
 	;
 
+section_NAME_list:
+		section_NAME_list opt_comma wildcard_name
+			{
+			  struct wildcard_list *tmp;
+			  tmp = (struct wildcard_list *) xmalloc (sizeof *tmp);
+			  tmp->next = $1;
+			  tmp->spec.name = $3;
+			  tmp->spec.sorted = none;
+			  tmp->spec.exclude_name_list = NULL;
+			  tmp->spec.section_flag_list = NULL;
+			  $$ = tmp;
+			}
+	|	wildcard_name
+			{
+			  struct wildcard_list *tmp;
+			  tmp = (struct wildcard_list *) xmalloc (sizeof *tmp);
+			  tmp->next = NULL;
+			  tmp->spec.name = $1;
+			  tmp->spec.sorted = none;
+			  tmp->spec.exclude_name_list = NULL;
+			  tmp->spec.section_flag_list = NULL;
+			  $$ = tmp;
+			}
+	;
+
+
 input_section_spec_no_keep:
-		NAME
+		ANY
+			{
+			  lang_add_any (NULL, NULL);
+			}
+	|	NAME
 			{
 			  struct wildcard_spec tmp;
 			  tmp.name = $1;
@@ -625,6 +657,10 @@ input_section_spec_no_keep:
 			  tmp.sorted = none;
 			  tmp.section_flag_list = NULL;
 			  lang_add_wild (&tmp, NULL, ldgram_had_keep);
+			}
+	|	sect_flags ANY
+			{
+			  lang_add_any ($1, NULL);
 			}
 	|	sect_flags NAME
 			{
@@ -648,9 +684,17 @@ input_section_spec_no_keep:
 			  tmp.section_flag_list = $1;
 			  lang_add_wild (&tmp, $3, ldgram_had_keep);
 			}
+	|	ANY '(' section_NAME_list ')'
+			{
+			  lang_add_any (NULL, $3);
+			}
 	|	wildcard_spec '(' file_NAME_list ')'
 			{
 			  lang_add_wild (&$1, $3, ldgram_had_keep);
+			}
+	|	sect_flags ANY '(' section_NAME_list ')'
+			{
+			  lang_add_any ($1, $4);
 			}
 	|	sect_flags wildcard_spec '(' file_NAME_list ')'
 			{

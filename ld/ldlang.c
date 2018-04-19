@@ -75,6 +75,14 @@ static lang_statement_list_type **stat_save_ptr = &stat_save[0];
 static struct unique_sections *unique_section_list;
 static struct asneeded_minfo *asneeded_list_head;
 static unsigned int opb_shift = 0;
+static struct section_list_info unattached_sec_list;
+static bfd_boolean first_lang_size = TRUE;
+/* Control whether to compute the left space of region at .ANY point,
+   it is only useful in lang_size_section_1 function in descending_size
+   mode. */
+static bfd_boolean compute_region_space = FALSE;
+/* Avoid to execute some code when there is no .ANY statement. */
+static bfd_boolean found_any_statement = FALSE;
 
 /* Forward declarations.  */
 static void exp_init_os (etree_type *);
@@ -93,6 +101,15 @@ static void lang_do_version_exports_section (void);
 static void lang_finalize_version_expr_head
   (struct bfd_elf_version_expr_head *);
 static void lang_do_memory_regions (void);
+static void section_list_init (struct section_list_info *);
+static struct section_list *
+section_list_add (struct section_list_info *, asection *);
+static struct section_list *
+section_list_find (struct section_list_info, asection *);
+static void any_statement_list_init (struct any_statement_list_info *);
+static void any_statement_list_add (struct any_statement_list_info *,
+                                    lang_any_statement_type *);
+static void lang_attach_any (void);
 
 /* Exported variables.  */
 const char *output_target;
@@ -113,10 +130,20 @@ bfd_boolean delete_output_file_on_failure = FALSE;
 struct lang_phdr *lang_phdr_list;
 struct lang_nocrossrefs *nocrossref_list;
 struct asneeded_minfo **asneeded_list_tail;
+/* For ANY feature.  */
+bfd_vma any_contingency = 2;
+enum any_sort_order_type any_sort_order = ANY_SORT_ORDER_DESCENDING_SIZE;
 
  /* Functions that traverse the linker script and might evaluate
     DEFINED() need to increment this at the start of the traversal.  */
 int lang_statement_iteration = 0;
+
+/* This is a temp output section for ANY INPUT STATEMENT ot attach. */
+static asection temp_sec_for_any = {
+  .name = "ANY"
+};
+
+#define temp_sec_for_any_ptr ((asection *) &temp_sec_for_any)
 
 /* Return TRUE if the PATTERN argument is a wildcard pattern.
    Although backslashes are treated specially if a pattern contains
@@ -527,6 +554,20 @@ output_section_callback_fast (lang_wild_statement_type *ptr,
   tree = wild_sort_fast (ptr, sec, file, section);
   if (tree != NULL)
     *tree = node;
+}
+
+static void
+any_section_totemp_callback (lang_wild_statement_type *ptr ATTRIBUTE_UNUSED,
+                  struct wildcard_list *sec ATTRIBUTE_UNUSED,
+                  asection *section,
+                  struct flag_info *sflag_list ATTRIBUTE_UNUSED,
+                  lang_input_statement_type *file ATTRIBUTE_UNUSED,
+                  void *output)
+{
+  if (section->output_section == NULL &&
+      (section->flags & SEC_ALLOC))
+    section->output_section = temp_sec_for_any_ptr;
+  section_list_add ((struct section_list_info *)output, section);
 }
 
 /* Convert a sorted sections' BST back to list form.  */
@@ -961,6 +1002,15 @@ lang_for_each_statement_worker (void (*func) (lang_statement_union_type *),
 	  lang_for_each_statement_worker (func,
 					  s->group_statement.children.head);
 	  break;
+  case lang_any_statement_enum:
+    {
+      lang_wild_statement_type *any_wildcard =
+        &s->any_statement.children.head->wild_statement;
+      if (any_wildcard != NULL)
+           lang_for_each_statement_worker (func,
+                    any_wildcard->children.head);
+      break;
+    }
 	case lang_data_statement_enum:
 	case lang_reloc_statement_enum:
 	case lang_object_symbols_statement_enum:
@@ -985,6 +1035,134 @@ void
 lang_for_each_statement (void (*func) (lang_statement_union_type *))
 {
   lang_for_each_statement_worker (func, statement_list.head);
+}
+
+/*----------------------------------------------------------------------*/
+static void
+any_statement_list_init (struct any_statement_list_info *list)
+{
+  list->head = NULL;
+  list->tail = &list->head;
+}
+
+static void
+any_statement_list_add (struct any_statement_list_info *list,
+    lang_any_statement_type *any_state)
+{
+  struct any_statement_list *new_item = (struct any_statement_list *)
+  xmalloc (sizeof (struct any_statement_list));
+  new_item->any_state = any_state;
+  new_item->next = NULL;
+  *list->tail = new_item;
+  list->tail = &new_item->next;
+}
+
+static void
+any_statement_list_free (struct any_statement_list_info *list)
+{
+  struct any_statement_list *p = list->head;
+  struct any_statement_list *tmp;
+
+  while (p != NULL)
+  {
+    tmp = p;
+    p = p->next;
+    free (tmp);
+  }
+
+  list->head = NULL;
+  list->tail = &list->head;
+}
+
+/*----------------------------------------------------------------------*/
+static void section_list_init (struct section_list_info *list)
+{
+  list->head = NULL;
+  list->tail = &list->head;
+}
+
+static struct section_list *
+section_list_add (struct section_list_info *list,
+    asection *sec)
+{
+  struct section_list *new_item = (struct section_list *)
+  xmalloc (sizeof (struct section_list));
+  new_item->section = sec;
+  any_statement_list_init (&new_item->match_state);
+  new_item->next = NULL;
+  *list->tail = new_item;
+  list->tail = &new_item->next;
+
+  return new_item;
+}
+
+static void
+section_list_free (struct section_list_info *list)
+{
+  struct section_list *p = list->head;
+  struct section_list *tmp;
+
+  while (p != NULL)
+  {
+    tmp = p;
+    p = p->next;
+    any_statement_list_free (&tmp->match_state);
+    free (tmp);
+  }
+
+  list->head = NULL;
+  list->tail = &list->head;
+}
+
+static struct section_list *
+section_list_find (struct section_list_info list,
+    asection *sec)
+{
+  struct section_list *p = list.head;
+
+  while (p != NULL)
+  {
+    if (p->section == sec)
+        break;
+    p = p->next;
+  }
+
+  return p;
+}
+
+static void section_list_sort (struct section_list_info *list)
+{
+  struct section_list *prev, *q, *tmp, *first;
+  struct section_list *head = list->head;
+  if (head == NULL)
+    return;
+
+  first = head->next;
+  head->next = NULL;
+
+  while (first != NULL)
+  {
+    tmp = first;
+    for (q = head; q != NULL; prev = q, q = q->next)
+    {
+      if (q->section->size < tmp->section->size)
+        break;
+    }
+
+    first = first->next;
+
+    if (q == head)
+    {
+      head = tmp;
+    }
+    else
+    {
+      prev->next = tmp;
+    }
+    tmp->next = q;
+  }
+
+  list->head = head;
 }
 
 /*----------------------------------------------------------------------*/
@@ -1793,6 +1971,7 @@ insert_os_after (lang_output_section_statement_type *after)
 	case lang_output_statement_enum:
 	case lang_group_statement_enum:
 	case lang_insert_statement_enum:
+  case lang_any_statement_enum:
 	  continue;
 	}
       break;
@@ -2336,7 +2515,8 @@ lang_add_section (lang_statement_list_type *ptr,
 
   if (discard)
     {
-      if (section->output_section == NULL)
+      if (section->output_section == NULL
+          || section->output_section == temp_sec_for_any_ptr)
 	{
 	  /* This prevents future calls from assigning this section.  */
 	  section->output_section = bfd_abs_section_ptr;
@@ -2352,6 +2532,9 @@ lang_add_section (lang_statement_list_type *ptr,
       if (!keep)
 	return;
     }
+
+  if (section->output_section == temp_sec_for_any_ptr)
+    section->output_section = NULL;
 
   if (section->output_section != NULL)
     return;
@@ -3705,6 +3888,31 @@ map_input_to_output_sections
 	  break;
 	case lang_insert_statement_enum:
 	  break;
+  case lang_any_statement_enum:
+    {
+      lang_wild_statement_type *any_wildcard =
+        &s->any_statement.children.head->wild_statement;
+      if (any_wildcard != NULL)
+      {
+        if (os->bfd_section == NULL)
+          init_os (os, 0);
+        if (strcmp (os->name, DISCARD_SECTION_NAME) == 0)
+          walk_wild (any_wildcard, output_section_callback, os);
+        else
+          walk_wild (any_wildcard,
+                any_section_totemp_callback,
+                &s->any_statement.match_sections);
+      }
+      /* Since the section must be attached at last lang_size_section_1 pass
+         at descending_size Mode, the output section may be strip when the
+         output section statement has only .ANY input section. Make it keeped
+         to avoid it striped at strip_excluded_output_sections().
+         At cmdline Mode, this problem is also exist when the contingency
+         is too small for attaching at first lang_size_section_1 pass. */
+      if (os != NULL && os->bfd_section != NULL)
+        os->bfd_section->flags |= SEC_KEEP;
+      break;
+    }
 	}
     }
 }
@@ -4452,6 +4660,50 @@ print_wild_statement (lang_wild_statement_type *w,
   print_statement_list (w->children.head, os);
 }
 
+static void
+print_any_statement (lang_any_statement_type *any,
+              lang_output_section_statement_type *os)
+{
+  struct wildcard_list *sec;
+  lang_wild_statement_type *any_wildcard =
+        &any->children.head->wild_statement;
+
+  print_space ();
+
+  minfo ("ANY");
+
+  if (any_wildcard->section_list != NULL)
+  {
+    minfo ("(");
+    for (sec = any_wildcard->section_list; sec; sec = sec->next)
+      {
+        if (sec->spec.sorted)
+      minfo ("SORT(");
+        if (sec->spec.exclude_name_list != NULL)
+      {
+        name_list *tmp;
+        minfo ("EXCLUDE_FILE(%s", sec->spec.exclude_name_list->name);
+        for (tmp = sec->spec.exclude_name_list->next; tmp; tmp = tmp->next)
+          minfo (" %s", tmp->name);
+        minfo (") ");
+      }
+        if (sec->spec.name != NULL)
+      minfo ("%s", sec->spec.name);
+        else
+      minfo ("*");
+        if (sec->spec.sorted)
+      minfo (")");
+        if (sec->next)
+      minfo (" ");
+      }
+    minfo (")");
+  }
+
+  print_nl ();
+
+  print_statement_list (any_wildcard->children.head, os);
+}
+
 /* Print a group statement.  */
 
 static void
@@ -4549,6 +4801,9 @@ print_statement (lang_statement_union_type *s,
       minfo ("INSERT %s %s\n",
 	     s->insert_statement.is_before ? "BEFORE" : "AFTER",
 	     s->insert_statement.where);
+      break;
+    case lang_any_statement_enum:
+      print_any_statement(&s->any_statement, os);
       break;
     }
 }
@@ -4670,6 +4925,50 @@ size_input_section
 	}
 
       /* Remember where in the output section this input section goes.  */
+      i->output_offset = dot - o->vma;
+
+      /* Mark how big the output section must be to contain this now.  */
+      dot += TO_ADDR (i->size);
+      o->size = TO_SIZE (dot - o->vma);
+    }
+
+  return dot;
+}
+
+/* Work out how much this section will move the dot point(by section).  */
+
+static bfd_vma
+size_input_section_bs
+  (asection *i,
+   lang_output_section_statement_type *output_section_statement,
+   bfd_vma dot)
+{
+  if ((i->flags & SEC_EXCLUDE) == 0)
+    {
+      unsigned int alignment_needed;
+      asection *o;
+
+      /* Align this section first to the input sections requirement,
+     then to the output section's requirement.  If this alignment
+     is greater than any seen before, then record it too.  Perform
+     the alignment by inserting a magic 'padding' statement.  */
+
+      if (output_section_statement->subsection_alignment != -1)
+        i->alignment_power = output_section_statement->subsection_alignment;
+
+      o = output_section_statement->bfd_section;
+      if (o->alignment_power < i->alignment_power)
+        o->alignment_power = i->alignment_power;
+
+      alignment_needed = align_power (dot, i->alignment_power) - dot;
+
+      if (alignment_needed != 0)
+      {
+        dot += alignment_needed;
+      }
+
+      /* Remember where in the output section this input section goes.  */
+
       i->output_offset = dot - o->vma;
 
       /* Mark how big the output section must be to contain this now.  */
@@ -5436,6 +5735,128 @@ lang_size_sections_1
 	  /* We can only get here when relaxing is turned on.  */
 	case lang_address_statement_enum:
 	  break;
+  case lang_any_statement_enum:
+    {
+      lang_memory_region_type *current_region =
+       output_section_statement->region;
+      lang_memory_region_type *current_lma_region =
+       output_section_statement->lma_region;
+      lang_wild_statement_type *any_wildcard =
+               &s->any_statement.children.head->wild_statement;
+      if (any_sort_order == ANY_SORT_ORDER_CMDLINE)
+        {
+          bfd_vma vitual_dot = dot;
+
+          if (any_wildcard == NULL)
+            break;
+
+          /* Since the lang_size_sections_1 is not only execute once,
+             count the sections has already been attached. */
+          vitual_dot = lang_size_sections_1(&any_wildcard->children.head,
+                               output_section_statement,
+                               fill, vitual_dot, relax, check_regions);
+
+          if (current_region != NULL)
+            {
+              struct section_list *sec = s->any_statement.match_sections.head;
+
+              for ( ;sec != NULL; sec = sec->next)
+                {
+                  asection *is = sec->section;
+
+                  if (is->output_section == temp_sec_for_any_ptr)
+                    {
+                      bfd_vma temp_dot = 0;
+                      unsigned long long assign_size = 0;
+                      unsigned long long vma_guard_size, lma_guard_size;
+
+                      temp_dot = size_input_section_bs (is,
+                                                        output_section_statement,
+                                                        vitual_dot);
+                      assign_size = temp_dot - vitual_dot;
+
+                      if (first_lang_size == TRUE && any_contingency != 0)
+                        {
+                        vma_guard_size =
+                         ((unsigned long long)current_region->length)
+                         * (100 - any_contingency) / 100;
+                        if (current_lma_region != NULL)
+                          lma_guard_size =
+                           ((unsigned long long)current_lma_region->length)
+                           * (100 - any_contingency) / 100;
+                        else
+                          lma_guard_size = 0;
+                        }
+                      else
+                        {
+                          vma_guard_size = current_region->length;
+                          lma_guard_size = (current_lma_region == NULL) ? 0 :
+                              current_lma_region->length;
+                        }
+                      if ((temp_dot - current_region->origin) <= vma_guard_size)
+                        {
+                          if (current_lma_region != NULL)
+                            {
+                              if ((current_lma_region->current + assign_size -
+                                   current_lma_region->origin) > lma_guard_size)
+                                  continue;
+                            }
+                          vitual_dot = temp_dot;
+                          lang_add_section (&any_wildcard->children,
+                                            is, any_wildcard->section_flag_list,
+                                            output_section_statement);
+                        }
+                      else
+                        continue;
+                    }
+                }
+            }
+        }
+      else if (any_sort_order == ANY_SORT_ORDER_DESCENDING_SIZE&&
+               compute_region_space== TRUE)
+        {
+          unsigned long long vma_region_left = 0;
+          unsigned long long lma_region_left = 0;
+          struct section_list *sec = s->any_statement.match_sections.head;
+
+          s->any_statement.os = output_section_statement;
+          s->any_statement.current_dot = dot;
+
+          if (current_region != NULL)
+            {
+              vma_region_left = current_region->length + current_region->origin
+                                - dot;
+              s->any_statement.vma_region_left = vma_region_left;
+            }
+          if (current_lma_region != NULL)
+            {
+              lma_region_left = current_lma_region->length
+               + current_region->origin -dot;
+              s->any_statement.lma_region_left = lma_region_left;
+            }
+          else
+            lma_region_left = vma_region_left;
+          s->any_statement.region_left = vma_region_left < lma_region_left ?
+                                         vma_region_left : lma_region_left;
+
+          for ( ;sec != NULL; sec = sec->next)
+            {
+              struct section_list *p = section_list_find (unattached_sec_list,
+                                                          sec->section);
+              if (p == NULL)
+                {
+                  p = section_list_add (&unattached_sec_list, sec->section);
+                }
+              any_statement_list_add (&p->match_state, &s->any_statement);
+            }
+
+        }
+      dot = lang_size_sections_1(&any_wildcard->children.head,
+                     output_section_statement,
+                     fill, dot, relax, check_regions);
+      break;
+    }
+
 
 	default:
 	  FAIL ();
@@ -5500,6 +5921,11 @@ one_lang_size_sections_pass (bfd_boolean *relax, bfd_boolean check_regions)
   lang_statement_iteration++;
   lang_size_sections_1 (&statement_list.head, abs_output_section,
 			0, 0, relax, check_regions);
+  /* Since when sort_any_order=cmdline, the region left space must be count as
+     contingency size. If some any sections has not be attached at first pass,
+     then use the region origin size at later passes. */
+  if (first_lang_size == TRUE)
+    first_lang_size = FALSE;
 }
 
 void
@@ -5746,6 +6172,17 @@ lang_do_assignments_1 (lang_statement_union_type *s,
 
 	case lang_address_statement_enum:
 	  break;
+  case lang_any_statement_enum:
+    {
+      lang_wild_statement_type *any_wildcard =
+       &s->any_statement.children.head->wild_statement;
+      if (any_wildcard != NULL)
+        {
+          dot = lang_do_assignments_1 (any_wildcard->children.head,
+                                       current_os, fill, dot, found_end);
+        }
+      break;
+    }
 
 	default:
 	  FAIL ();
@@ -6535,6 +6972,14 @@ lang_gc_sections_1 (lang_statement_union_type *s)
 	case lang_group_statement_enum:
 	  lang_gc_sections_1 (s->group_statement.children.head);
 	  break;
+  case lang_any_statement_enum:
+    {
+      lang_wild_statement_type *any_wildcard =
+       &s->any_statement.children.head->wild_statement;
+      if (any_wildcard != NULL)
+        walk_wild (any_wildcard, gc_section_callback, NULL);
+      break;
+    }
 	default:
 	  break;
 	}
@@ -6582,7 +7027,8 @@ find_relro_section_callback (lang_wild_statement_type *ptr ATTRIBUTE_UNUSED,
   /* Discarded, excluded and ignored sections effectively have zero
      size.  */
   if (section->output_section != NULL
-      && section->output_section->owner == link_info.output_bfd
+      && (section->output_section->owner == link_info.output_bfd
+          || section->output_section == temp_sec_for_any_ptr)
       && (section->output_section->flags & SEC_EXCLUDE) == 0
       && !IGNORE_SECTION (section)
       && section->size != 0)
@@ -6625,6 +7071,16 @@ lang_find_relro_sections_1 (lang_statement_union_type *s,
 	  lang_find_relro_sections_1 (s->group_statement.children.head,
 				      has_relro_section);
 	  break;
+  case lang_any_statement_enum:
+    {
+      lang_wild_statement_type *any_wildcard =
+       &s->any_statement.children.head->wild_statement;
+      walk_wild (any_wildcard,
+                 find_relro_section_callback,
+                 has_relro_section);
+      break;
+    }
+
 	default:
 	  break;
 	}
@@ -6700,6 +7156,202 @@ lang_relax_sections (bfd_boolean need_layout)
       lang_size_sections (NULL, TRUE);
     }
 }
+
+static void
+lang_check_any (void)
+{
+  LANG_FOR_EACH_INPUT_STATEMENT (file)
+  {
+    asection *s;
+
+    for (s = file->the_bfd->sections; s != NULL; s = s->next)
+    {
+      if (s->output_section == temp_sec_for_any_ptr)
+      {
+        einfo (_("%X%P: there is no space to put %B's section `%s' in specified region.\n"),
+            s->owner,
+            s->name);
+      }
+    }
+  }
+}
+
+static void
+ldlang_free_match_state (lang_statement_union_type *statement)
+{
+  switch (statement->header.type)
+    {
+    case lang_any_statement_enum:
+      section_list_free (&statement->any_statement.match_sections);
+         break;
+
+    default:
+      break;
+    }
+}
+
+static void
+lang_free_any (void)
+{
+  lang_for_each_statement (ldlang_free_match_state);
+  if (any_sort_order == ANY_SORT_ORDER_DESCENDING_SIZE && found_any_statement == TRUE)
+    section_list_free (&unattached_sec_list);
+}
+
+static void
+lang_any_finish (void)
+{
+  lang_check_any ();
+  lang_free_any ();
+}
+
+static void
+update_list_region_left (
+          struct section_list_info sec_list,
+          lang_memory_region_type *vma_region,
+          lang_memory_region_type *lma_region,
+          unsigned long long vma_region_left,
+          unsigned long long lma_region_left)
+{
+  struct section_list *sec;
+
+  for (sec = sec_list.head; sec != NULL; sec = sec->next)
+  {
+    struct any_statement_list *any_state_list = sec->match_state.head;
+
+    while (any_state_list != NULL)
+    {
+      if (any_state_list->any_state->os->region == vma_region)
+        any_state_list->any_state->vma_region_left = vma_region_left;
+      if (lma_region != NULL
+       && any_state_list->any_state->os->lma_region == lma_region)
+        any_state_list->any_state->lma_region_left = lma_region_left;
+
+      if (any_state_list->any_state->os->lma_region == NULL)
+        any_state_list->any_state->region_left =
+            any_state_list->any_state->vma_region_left;
+      else
+      {
+        unsigned long long temp_vma_region_left
+            = any_state_list->any_state->vma_region_left;
+        unsigned long long temp_lma_region_left
+            = any_state_list->any_state->lma_region_left;
+
+        any_state_list->any_state->region_left =
+            temp_vma_region_left < temp_lma_region_left ?
+            temp_vma_region_left : temp_lma_region_left;
+      }
+      any_state_list = any_state_list->next;
+    }
+  }
+
+  return;
+}
+
+static void
+lang_attach_any (void)
+{
+  struct section_list *sec;
+
+  section_list_sort (&unattached_sec_list);
+
+  for (sec = unattached_sec_list.head; sec != NULL; sec = sec->next)
+  {
+    struct any_statement_list *any_state_list = sec->match_state.head;
+    struct any_statement_list *max_space_region = any_state_list;
+
+    if (sec->section->output_section != temp_sec_for_any_ptr)
+      continue;
+
+    if (sec->section->flags & SEC_LOAD)
+    {
+      /* As code write this way, when two region's left size is
+       * same, the section will be put into the output section
+       * written first in ld script. */
+      while (any_state_list != NULL)
+      {
+        if (any_state_list->any_state->region_left > max_space_region->any_state->region_left)
+          max_space_region = any_state_list;
+        any_state_list = any_state_list->next;
+      }
+    }
+    else
+    {
+      unsigned long long region_left_max_region = 0;
+
+      while (any_state_list != NULL)
+      {
+        unsigned long long region_left_in_list = 0;
+        asection *section_in_list = any_state_list->any_state->os->bfd_section;
+
+        if (section_in_list->flags & SEC_LOAD)
+          region_left_in_list = any_state_list->any_state->region_left;
+        else
+          region_left_in_list = any_state_list->any_state->vma_region_left;
+
+        if (region_left_in_list > region_left_max_region)
+        {
+          max_space_region = any_state_list;
+          region_left_max_region = region_left_in_list;
+        }
+        any_state_list = any_state_list->next;
+      }
+    }
+    if (max_space_region != NULL)
+    {
+      lang_any_statement_type *any_statement = max_space_region->any_state;
+      lang_wild_statement_type *any_wildcard =
+        &any_statement->children.head->wild_statement;
+      bfd_vma virtual_dot;
+      lang_memory_region_type *current_region = any_statement->os->region;
+      lang_memory_region_type *current_lma_region = any_statement->os->lma_region;
+      unsigned long long vma_region_left = 0;
+      unsigned long long lma_region_left = 0;
+
+      if (sec->section->size <= max_space_region->any_state->region_left
+       || (((sec->section->flags & SEC_LOAD) == 0)
+           && ((any_statement->os->bfd_section->flags & SEC_LOAD) == 0)
+           && sec->section->size <= max_space_region->any_state->vma_region_left))
+      {
+        lang_add_section (&any_wildcard->children,
+          sec->section, any_wildcard->section_flag_list, any_statement->os);
+
+        virtual_dot = lang_size_sections_1(&any_wildcard->children.head,
+                               any_statement->os,
+                               0, any_statement->current_dot, FALSE, FALSE);
+
+        if (current_region != NULL)
+        {
+          vma_region_left = current_region->length + current_region->origin
+                                - virtual_dot;
+          any_statement->vma_region_left = vma_region_left;
+        }
+        if (current_lma_region != NULL)
+        {
+          if ((sec->section->flags & SEC_LOAD)
+           || (any_statement->os->bfd_section->flags & SEC_LOAD))
+          {
+            lma_region_left = current_lma_region->length + current_region->origin
+                                  - virtual_dot;
+            any_statement->lma_region_left = lma_region_left;
+          }
+          else
+            lma_region_left = any_statement->lma_region_left;
+        }
+        else
+          lma_region_left = vma_region_left;
+        any_statement->region_left = vma_region_left < lma_region_left ?
+                                    vma_region_left : lma_region_left;
+        update_list_region_left (unattached_sec_list,
+                  current_region,
+                  current_lma_region,
+                  vma_region_left,
+                  lma_region_left);
+      }
+    }
+  }
+}
+
 
 #ifdef ENABLE_PLUGINS
 /* Find the insert point for the plugin's replacement files.  We
@@ -6996,8 +7648,22 @@ lang_process (void)
   if (link_info.relro && !bfd_link_relocatable (&link_info))
     lang_find_relro_sections ();
 
+  if (any_sort_order == ANY_SORT_ORDER_DESCENDING_SIZE&& found_any_statement == TRUE)
+    {
+      section_list_init (&unattached_sec_list);
+      compute_region_space = TRUE;
+      one_lang_size_sections_pass (NULL, FALSE);
+      compute_region_space = FALSE;
+      lang_attach_any ();
+      lang_reset_memory_regions ();
+    }
+
   /* Size up the sections.  */
   lang_size_sections (NULL, !RELAXATION_ENABLED);
+
+  /* Check if there is any section not be allocated because of ANY statemnent.
+     And free space malloc by any. */
+  lang_any_finish ();
 
   /* See if anything special should be done now we know how big
      everything is.  This is where relaxation is done.  */
@@ -7069,6 +7735,49 @@ lang_add_wild (struct wildcard_spec *filespec,
   new_stmt->keep_sections = keep_sections;
   lang_list_init (&new_stmt->children);
   analyze_walk_wild_section_handler (new_stmt);
+}
+
+void
+lang_add_any (struct flag_info *section_flag_list,
+                struct wildcard_list *section_list)
+{
+  struct wildcard_list *curr, *next;
+  lang_any_statement_type *new_stmt;
+
+  new_stmt = new_stat (lang_any_statement, stat_ptr);
+  new_stmt->region_left = 0;
+  new_stmt->vma_region_left = 0;
+  new_stmt->lma_region_left = 0;
+  new_stmt->os = NULL;
+  new_stmt->current_dot = 0;
+  section_list_init (&new_stmt->match_sections);
+  lang_list_init (&new_stmt->children);
+
+  /* Add wild statement to this any statement's children. */
+  {
+    lang_wild_statement_type *new_wild_stmt;
+
+    /* Reverse the list as the parser puts it back to front.  */
+    for (curr = section_list, section_list = NULL;
+         curr != NULL;
+         section_list = curr, curr = next)
+    {
+      next = curr->next;
+      curr->next = section_list;
+    }
+
+    new_wild_stmt = new_stat (lang_wild_statement, &new_stmt->children);
+    new_wild_stmt->filename = NULL;
+    new_wild_stmt->filenames_sorted = FALSE;
+    new_wild_stmt->section_list = section_list;
+    new_wild_stmt->keep_sections = FALSE;
+    new_wild_stmt->section_flag_list = section_flag_list;
+    lang_list_init (&new_wild_stmt->children);
+    analyze_walk_wild_section_handler (new_wild_stmt);
+  }
+
+  if (found_any_statement == FALSE)
+    found_any_statement = TRUE;
 }
 
 void
