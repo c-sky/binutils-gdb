@@ -25,24 +25,24 @@
 
 struct gdbarch_tdep
 {
-  /* Gdbarch target dependent data here.  */
+  /* gdbarch target dependent data here.  */
   unsigned int isa_version;
   unsigned int abi_version;
   unsigned int mach;
   /*
-   * Is it a disassemble function?
+   *is it a disassemble function?
    *           0, no
    *           1, yes 
    */
   /* unsigned int   dis_func_p;  */
   /*
-   * In backtrace:0, ld = r15
-   *              1, ld = epc
-   *              2, ld = fpc
+   *in backtrace:0, ld = r15
+   *             1, ld = epc
+   *             2, ld = fpc
    */
   unsigned int lr_type_p;
 
-/* The selected register will form a list, which will be update, when
+/* the selected register will form a list, which will be update, when
    conducting -data-list-register-changed command.  */
   char * selected_registers; 
   unsigned int return_reg;
@@ -50,22 +50,22 @@ struct gdbarch_tdep
 
 typedef int (*pctrace_function_type)(char *args, unsigned int *pclist,
                                      int *depth, int from_tty);
-/* CSKY register numbers.  */
+/* csky register numbers.  */
 
 enum csky_regnum
 {
-  CSKY_R0_REGNUM = 0,     /* General regiters.  */
+  CSKY_R0_REGNUM = 0,     /* general regiters.  */
   CSKY_R15_REGNUM = 15, 
-  CSKY_PC_REGNUM = 72,    /* PC.  */
-  CSKY_HI_REGNUM = 20,    /* HI.  */
-  CSKY_LO_REGNUM = 21,    /* LO.  */
-  CSKY_CR0_REGNUM = 89,   /* Control registers.  */
-  CSKY_VBR_REGNUM = CSKY_CR0_REGNUM  + 1,    /* VBR.  */
-  CSKY_EPSR_REGNUM = CSKY_CR0_REGNUM + 2,    /* EPSR.  */
-  CSKY_FPSR_REGNUM = CSKY_CR0_REGNUM + 3,    /* FPSR.  */
-  CSKY_EPC_REGNUM = CSKY_CR0_REGNUM  + 4,    /* EPC.  */
-  CSKY_FPC_REGNUM = CSKY_CR0_REGNUM  + 5,    /* FPC.  */
-  CSKY_FR0_REGNUMV2 = 40,   /* Float register 0.  */
+  CSKY_PC_REGNUM = 72,    /* pc.  */
+  CSKY_HI_REGNUM = 20,    /* hi.  */
+  CSKY_LO_REGNUM = 21,    /* lo.  */
+  CSKY_CR0_REGNUM = 89,   /* control registers.  */
+  CSKY_VBR_REGNUM = CSKY_CR0_REGNUM  + 1,    /* vbr.  */
+  CSKY_EPSR_REGNUM = CSKY_CR0_REGNUM + 2,    /* epsr.  */
+  CSKY_FPSR_REGNUM = CSKY_CR0_REGNUM + 3,    /* fpsr.  */
+  CSKY_EPC_REGNUM = CSKY_CR0_REGNUM  + 4,    /* epc.  */
+  CSKY_FPC_REGNUM = CSKY_CR0_REGNUM  + 5,    /* fpc.  */
+  CSKY_FR0_REGNUMV2 = 40,   /* float register 0.  */
   CSKY_VCR0_REGNUM = 121,
   CSKY_MMU_REGNUM = 128,
   CSKY_PROFCR_REGNUM = 140, /* Profiling only in ABIV2.  */
@@ -73,9 +73,9 @@ enum csky_regnum
   CSKY_NUM_REGS = 253,
   CSKY_FP_REGNUM = 8,
 
-  /* Register coding.  */
+  /* register coding.  */
 #ifdef CSKYGDB_CONFIG_ABIV2
-  CSKY_VR0_REGNUM = 56,   /* Vector register 0.  */
+  CSKY_VR0_REGNUM = 56,   /* vector register 0.  */
 
   /* m32r calling convention.  */
   CSKY_SP_REGNUM = CSKY_R0_REGNUM + 14,
@@ -647,8 +647,25 @@ extern unsigned int hardware_version;
 /* For pctrace.  */
 extern pctrace_function_type pctrace;
 
+/* Debug_in_rom  */
+extern int debug_in_rom;
+
+#define DEFAULT_PROMPT  "(cskygdb) "
+
+/* Script file.  */
+extern char *gdbstopfile;
+extern char *gdbcontinuefile;
+
 /* Is CSKY 810p.  */
 #define IS_CSKY_V2P(mach) (mach == 0x7)
 
+/* Define the max insns for analysising lr type.  */
+#define CSKY_ANALYSIS_LR_INSNS_MAX 10000
+
+/* Define for csky multicore max count.  */
+#define CSKY_MULTICORE_MAX  4
+
+/* Check HSR PR when Mcore_threads.  */
+#define HSR_PR_TRUE(hsr)  ((hsr) & (1 << 16))
 #endif /* csky-tdep.h */
 

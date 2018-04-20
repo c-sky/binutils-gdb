@@ -143,7 +143,9 @@ static struct mi_cmd mi_cmds[] =
   DEF_MI_CMD_CLI ("target-attach", "attach", 1),
   DEF_MI_CMD_MI ("target-detach", mi_cmd_target_detach),
   DEF_MI_CMD_CLI ("target-disconnect", "disconnect", 0),
+#ifndef CSKYGDB_CONFIG
   DEF_MI_CMD_CLI ("target-download", "load", 1),
+#endif
   DEF_MI_CMD_MI ("target-file-delete", mi_cmd_target_file_delete),
   DEF_MI_CMD_MI ("target-file-get", mi_cmd_target_file_get),
   DEF_MI_CMD_MI ("target-file-put", mi_cmd_target_file_put),
@@ -178,6 +180,21 @@ static struct mi_cmd mi_cmds[] =
   DEF_MI_CMD_MI ("var-show-attributes", mi_cmd_var_show_attributes),
   DEF_MI_CMD_MI ("var-show-format", mi_cmd_var_show_format),
   DEF_MI_CMD_MI ("var-update", mi_cmd_var_update),
+#ifdef CSKYGDB_CONFIG
+  DEF_MI_CMD_MI ("data-add-register-list", mi_cmd_data_add_register_list),
+  DEF_MI_CMD_MI ("data-list-register-names-group",
+                 mi_cmd_data_list_register_names_group),
+  DEF_MI_CMD_MI ("target-flush", mi_cmd_flush),
+  DEF_MI_CMD_CLI ("gdb-source", "source", 1),
+  DEF_MI_CMD_MI ("target-reset", mi_cmd_reset),
+  DEF_MI_CMD_MI ("target-soft-reset", mi_cmd_softreset),
+  DEF_MI_CMD_MI ("target-pctrace", mi_cmd_target_pctrace),
+  DEF_MI_CMD_CLI ("target-dump", "dump", 1),
+  DEF_MI_CMD_CLI ("target-append", "append", 1),
+  DEF_MI_CMD_CLI ("target-restore", "restore", 1),
+  DEF_MI_CMD_CLI ("target-mthread", "info mthread", 1),
+  DEF_MI_CMD_MI ("target-download", mi_cmd_target_download),
+#endif
   { NULL, }
 };
 

@@ -435,7 +435,7 @@ case "${targ}" in
     targ_underscore=yes
     ;;
 
-  csky*-elf* | csky*-linux-* | csky*-uclinux* | csky*-ecos* )
+  csky*-elf* | csky*-linux* | csky*-uclinux* | csky*-ecos* )
     targ_defvec=csky_elf32_be_vec
     targ_selvecs="csky_elf32_be_vec csky_elf32_le_vec"
     ;;

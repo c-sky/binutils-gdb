@@ -122,7 +122,15 @@ extern mi_cmd_argv_ftype mi_cmd_var_update;
 extern mi_cmd_argv_ftype mi_cmd_enable_pretty_printing;
 extern mi_cmd_argv_ftype mi_cmd_enable_frame_filters;
 extern mi_cmd_argv_ftype mi_cmd_var_set_update_range;
-
+#ifdef CSKYGDB_CONFIG
+extern mi_cmd_argv_ftype mi_cmd_softreset;
+extern mi_cmd_argv_ftype mi_cmd_target_pctrace;
+extern mi_cmd_argv_ftype mi_cmd_data_add_register_list;
+extern mi_cmd_argv_ftype mi_cmd_data_list_register_names_group;
+extern mi_cmd_argv_ftype mi_cmd_flush;
+extern mi_cmd_argv_ftype mi_cmd_reset;
+extern mi_cmd_argv_ftype mi_cmd_target_download;
+#endif
 /* Description of a single command.  */
 
 struct mi_cli

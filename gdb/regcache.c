@@ -29,6 +29,9 @@
 #include "valprint.h"
 #include "regset.h"
 
+#ifdef CSKYGDB_CONFIG
+#include "csky-tdep.h"
+#endif
 /*
  * DATA STRUCTURE
  *
@@ -1566,3 +1569,132 @@ Takes an optional file parameter."),
 	   &maintenanceprintlist);
 
 }
+
+#ifdef CSKYGDB_CONFIG
+void
+regcache_update_prev_reglist (int regnum, struct regcache *dst, void *src)
+{
+  struct gdbarch *gdbarch;
+  gdb_byte buf[MAX_REGISTER_SIZE];
+  if (!dst)
+    {
+      return;
+    }
+  gdbarch = dst->descr->gdbarch;
+  if (regnum >=0 && regnum < dst->descr->nr_cooked_registers)
+    {
+      int valid = deprecated_frame_register_read((struct frame_info *)src,
+                                                  regnum, buf);
+      if (valid)
+        {
+          memcpy (register_buffer (dst, regnum), buf,
+                  register_size (gdbarch, regnum));
+          dst->register_status[regnum] = 1;
+        }
+    }
+}
+
+void
+regcache_save_reglist (struct regcache *dst,
+                       regcache_cooked_read_ftype *cooked_read,
+                       void *src)
+{
+  int regnum;
+  gdb_byte buf[MAX_REGISTER_SIZE];
+  struct gdbarch *gdbarch = dst->descr->gdbarch;
+  struct gdbarch_tdep * tdep = gdbarch_tdep (gdbarch);
+
+  if (tdep == NULL || tdep->selected_registers == NULL)
+    error ("No selected registers list found.");
+
+  /* The DST should be `read-only', if it wasn't then the save would
+     end up trying to write the register values back out to the
+     target.  */
+  gdb_assert (dst->readonly_p);
+
+  /* Clear the dest.  */
+  memset (dst->registers, 0, dst->descr->sizeof_cooked_registers);
+  memset (dst->register_status, 0,
+          dst->descr->sizeof_cooked_register_status);
+
+  /* Copy over any registers (identified by their membership in the
+     save_reggroup) and mark them as valid.  The full [0 .. gdbarch_num_regs +
+     gdbarch_num_pseudo_regs) range is checked since some architectures need
+     to save/restore `cooked' registers that live in memory.  */
+  for (regnum = 0; regnum < dst->descr->nr_cooked_registers; regnum++)
+    {
+      if (tdep->selected_registers[regnum]
+          && gdbarch_register_reggroup_p (gdbarch, regnum, save_reggroup))
+        {
+          int valid = cooked_read (src, regnum, buf);
+          if (valid)
+            {
+              memcpy (register_buffer (dst, regnum), buf,
+                      register_size (gdbarch, regnum));
+              dst->register_status[regnum] = 1;
+            }
+        }
+    }
+}
+
+void
+regcache_restore_reglist (struct regcache *dst,
+                          regcache_cooked_read_ftype *cooked_read,
+                          void *cooked_read_context)
+{
+  int regnum;
+  gdb_byte buf[MAX_REGISTER_SIZE];
+  struct gdbarch *gdbarch = dst->descr->gdbarch;
+  struct gdbarch_tdep * tdep = gdbarch_tdep (gdbarch);
+
+  if (tdep == NULL || tdep->selected_registers == NULL)
+    error ("No selected registers list found.");
+
+  /* The dst had better not be read-only.  If it is, the `restore'
+     doesn't make much sense.  */
+  gdb_assert (!dst->readonly_p);
+
+  /* Copy over any registers, being careful to only restore those that
+     were both saved and need to be restored.  The full [0 .. gdbarch_num_regs
+     + gdbarch_num_pseudo_regs) range is checked since some architectures need
+     to save/restore `cooked' registers that live in memory.  */
+  for (regnum = 0; regnum < dst->descr->nr_cooked_registers; regnum++)
+    {
+      if (tdep->selected_registers[regnum]
+          && gdbarch_register_reggroup_p (gdbarch, regnum, restore_reggroup))
+        {
+          int valid = cooked_read (cooked_read_context, regnum, buf);
+
+          if (valid)
+            regcache_cooked_write (dst, regnum, buf);
+        }
+    }
+}
+
+void
+regcache_cpy_reglist (struct regcache *dst, struct regcache *src)
+{
+  gdb_assert (src != NULL && dst != NULL);
+  gdb_assert (src->descr->gdbarch == dst->descr->gdbarch);
+  gdb_assert (src != dst);
+  gdb_assert (src->readonly_p || dst->readonly_p);
+
+  if (!src->readonly_p)
+    regcache_save_reglist (dst, do_cooked_read, src);
+  else if (!dst->readonly_p)
+    regcache_restore_reglist (dst, do_cooked_read, src);
+  else
+    regcache_cpy_no_passthrough (dst, src);
+}
+
+struct regcache *
+regcache_dup_reglist (struct regcache *src)
+{
+  struct regcache *newbuf;
+
+  newbuf = regcache_xmalloc (src->descr->gdbarch, get_regcache_aspace (src));
+  regcache_cpy_reglist (newbuf, src);
+  return newbuf;
+}
+
+#endif /* CSKYGDB_CONFIG */

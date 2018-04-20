@@ -75,6 +75,11 @@
    bit[13:8]  ice main ver    bit[7:0]   ice sub ver.  */
 unsigned int hardware_version = 0;
 
+/* For reggroup and user_regs from xml.  */
+struct reggroup_el *m_reggroup_list = NULL;
+struct user_reg_list *m_user_reg_list = NULL;
+struct pseudo_reg *m_pseudo_reg_list = NULL;
+
 /* For pctrace command.  */
 pctrace_function_type pctrace = NULL;
 
@@ -548,6 +553,13 @@ csky_register_type (struct gdbarch *gdbarch, int reg_nr)
 {
   int num_regs = gdbarch_num_regs (gdbarch);
   int num_pseudo_regs = gdbarch_num_pseudo_regs (gdbarch);
+  if ((reg_nr >= num_regs) && (reg_nr < (num_regs + num_pseudo_regs)))
+    {
+      if (m_pseudo_reg_list)
+        return csky_tdesc_pseudo_register_type (gdbarch,
+                                                reg_nr,
+                                                m_pseudo_reg_list);
+    }
 
   /* PC, EPC, FPC is text point.  */
   if ((reg_nr == CSKY_PC_REGNUM)  || (reg_nr == CSKY_EPC_REGNUM)
@@ -2595,6 +2607,14 @@ csky_analyze_lr_type_v1 (struct gdbarch *gdbarch,
   CORE_ADDR addr;
   unsigned int insn, rn;
   struct gdbarch_tdep * tdep= gdbarch_tdep (gdbarch);
+
+  /* When used EPC or FPC, current function may be very small. Assume
+     the count of insns of this function is less than
+     CSKY_ANALYSIS_LR_INSNS_MAX. Otherwise, lr type is R15. */
+
+  if ((end_pc - start_pc) > CSKY_ANALYSIS_LR_INSNS_MAX)
+    end_pc = start_pc + CSKY_ANALYSIS_LR_INSNS_MAX;
+
   for (addr = start_pc; addr < end_pc; addr += 2)
     {
       csky_get_insn (gdbarch, addr, &insn);
@@ -2628,6 +2648,14 @@ csky_analyze_lr_type_v2 (struct gdbarch *gdbarch,
   unsigned int insn, rn ,insn_len;
   insn_len = 2;
   struct gdbarch_tdep * tdep= gdbarch_tdep (gdbarch);
+
+  /* When used EPC or FPC, current function may be very small. Assume
+     the count of insns of this function is less than
+     CSKY_ANALYSIS_LR_INSNS_MAX. Otherwise, lr type is R15. */
+
+  if ((end_pc - start_pc) > CSKY_ANALYSIS_LR_INSNS_MAX)
+    end_pc = start_pc + CSKY_ANALYSIS_LR_INSNS_MAX;
+
   for (addr = start_pc; addr < end_pc; addr += insn_len)
     {
       insn_len = csky_get_insn (gdbarch, addr, &insn);
@@ -2940,6 +2968,20 @@ csky_init_reggroup ()
 static void
 csky_add_reggroups (struct gdbarch *gdbarch)
 {
+  if (m_reggroup_list)
+    {
+      struct reggroup_el *tmp;
+      tmp = m_reggroup_list;
+      while (tmp)
+        {
+          reggroup_add (gdbarch, tmp->group);
+          tmp = tmp->next;
+        }
+      reggroup_add (gdbarch, all_reggroup);
+      reggroup_add (gdbarch, general_reggroup);
+      return;
+    }
+
   reggroup_add (gdbarch, all_reggroup);
   reggroup_add (gdbarch, general_reggroup);
 
@@ -3082,6 +3124,161 @@ csky_init_selected_register_p (void)
   return;
 }
 
+static void
+free_reggroup_list ()
+{
+  if (m_reggroup_list == NULL)
+    return;
+  while (m_reggroup_list)
+    {
+      struct reggroup_el *p;
+      p = m_reggroup_list;
+      m_reggroup_list = m_reggroup_list->next;
+      xfree (p);
+    }
+}
+
+static void
+free_user_reg_list ()
+{
+  if (m_user_reg_list == NULL)
+    return;
+  while (m_user_reg_list)
+    {
+      struct user_reg_list *p;
+      p = m_user_reg_list;
+      m_user_reg_list = m_user_reg_list->next;
+      free (p);
+    }
+}
+
+/* Check whether xml has discribled the essential regs.  */
+
+static int
+csky_essential_reg_check (struct tdesc_arch_data *tdesc_data)
+{
+  if (!csky_tdesc_register_exists (tdesc_data, CSKY_PC_REGNUM))
+    {
+      warning ("The target-description xml doesn't discribe PC.");
+      return -1;
+    }
+  if (!csky_tdesc_register_exists (tdesc_data, CSKY_SP_REGNUM))
+    {
+      warning ("The target-description xml doesn't discribe SP.");
+      return -1;
+    }
+  if (!csky_tdesc_register_exists (tdesc_data, CSKY_LR_REGNUM))
+    {
+      warning ("The target-description xml doesn't discribe LR.");
+      return -1;
+    }
+  return 0;
+}
+
+/* Read for csky user regs.  */
+
+static struct value *
+value_of_csky_user_reg (struct frame_info *frame, const void *baton)
+{
+  const int *reg_p = (const int *) baton;
+  return value_of_register (*reg_p, frame);
+}
+
+/* Read for csky pseudo regs.  */
+
+static enum register_status
+csky_pseudo_register_read (struct gdbarch *gdbarch, struct regcache *regcache,
+                           int regnum, gdb_byte *buf)
+{
+  int is_mem;
+  if (m_pseudo_reg_list == NULL)
+    return REG_UNAVAILABLE;
+  is_mem = csky_tdesc_get_ismem (gdbarch, m_pseudo_reg_list, regnum);
+  if (is_mem < 0) /* REGNUM does not exist.  */
+    return REG_UNAVAILABLE;
+  else if (is_mem == 1)
+    {
+      long addr;
+      int len;
+      addr = csky_tdesc_get_addr (gdbarch, m_pseudo_reg_list, regnum);
+      len = register_size (gdbarch, regnum);
+      target_read_memory (addr, buf, len);
+      return REG_VALID;
+    }
+  else if(is_mem == 0)
+    {
+      int len = 0;
+      struct pseudo_reg_children *prc;
+      prc = csky_tdesc_get_regs_children (gdbarch, m_pseudo_reg_list, regnum);
+      while (prc)
+        {
+          regcache_raw_read (regcache, prc->regnum, buf + len);
+          len += register_size (gdbarch, prc->regnum);
+          prc = prc->next;
+        }
+      return REG_VALID;
+    }
+  else
+    return REG_UNKNOWN;
+}
+
+/* Write for csky pseudo regs.  */
+
+static void
+csky_pseudo_register_write (struct gdbarch *gdbarch, struct regcache *regcache,
+                            int regnum, const gdb_byte *buf)
+{
+  int is_mem;
+  if (m_pseudo_reg_list == NULL)
+    return;
+  is_mem = csky_tdesc_get_ismem (gdbarch, m_pseudo_reg_list, regnum);
+  if (is_mem < 0) /* REGNUM does not exist.  */
+    return;
+  else if(is_mem == 1)
+    {
+      long addr;
+      int len;
+      addr = csky_tdesc_get_addr (gdbarch, m_pseudo_reg_list, regnum);
+      len = register_size (gdbarch, regnum);
+      target_write_memory (addr, buf, len);
+    }
+  else if(is_mem == 0)
+    {
+      int len = 0;
+      struct pseudo_reg_children *prc;
+      prc = csky_tdesc_get_regs_children (gdbarch, m_pseudo_reg_list, regnum);
+      while (prc)
+        {
+          regcache_raw_write (regcache, prc->regnum, buf + len);
+          len += register_size (gdbarch, prc->regnum);
+          prc = prc->next;
+        }
+    }
+  else
+    return;
+}
+
+/* Return pseudo reg's name.  */
+
+static const char *
+csky_pseudo_register_name (struct gdbarch *gdbarch, int regno)
+{
+  if (m_pseudo_reg_list)
+    return csky_tdesc_pseudo_register_name (gdbarch, regno,
+                                            m_pseudo_reg_list);
+  return NULL;
+}
+
+/* Csky tdesc register group p, decided by reg->group written in the xml.  */
+
+int
+csky_target_desc_register_reggroup_p (struct gdbarch *gdbarch,
+                                      int regno,
+                                      struct reggroup *reggroup)
+{
+  return csky_tdesc_register_reggroup_p(gdbarch, regno,
+                                        reggroup, m_pseudo_reg_list);
+}
 
 /* Functions for CSKY CORE FILE debug.  */
 
@@ -3352,11 +3549,101 @@ csky_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   int num_pseudo_regs = 0;
   int num_regs = 0;
   int mach_find = 0;
+  struct tdesc_arch_data *tdesc_data = NULL;
+
+  if (tdesc_has_registers (info.target_desc))
+    {
+      int valid_p;
+      int count = 0;
+      const struct tdesc_feature *feature, *pseudo_reg_feature;
+      pseudo_reg_feature = NULL;
+      /* Make sure that xxx_list is NULL when analysis target_desc.  */
+      free_reggroup_list ();
+      free_user_reg_list ();
+      csky_tdesc_free_pseudo_reg_list (&m_pseudo_reg_list);
+
+      tdesc_data = tdesc_data_alloc ();
+      feature = csky_tdesc_find_feature (info.target_desc, count);
+      if (feature == NULL)
+        return NULL;
+      while (feature != NULL)
+        {
+          if (strcmp (tdesc_feature_name (feature), CSKY_PSEUDO_FEATURE_NAME))
+            {
+#ifndef CSKYGDB_CONFIG_ABIV2
+              if (strncmp (tdesc_feature_name (feature),
+                           CSKY_ABIV1_FEATURE_NAME_PREFIX,
+                           CSKY_FEATURE_NAME_PREFIX_LENGTH))
+                {
+                  warning (_("Error feature name \"%s\",it should started"
+                             " with \"%s\"."),
+                             tdesc_feature_name (feature),
+                             CSKY_ABIV1_FEATURE_NAME_PREFIX);
+                  valid_p = -1;
+                }
+#else
+              if (strncmp (tdesc_feature_name (feature),
+                           CSKY_ABIV2_FEATURE_NAME_PREFIX,
+                           CSKY_FEATURE_NAME_PREFIX_LENGTH))
+                {
+                  warning (_("Error feature name \"%s\",it should started"
+                             " with \"%s\"."),
+                             tdesc_feature_name (feature),
+                             CSKY_ABIV2_FEATURE_NAME_PREFIX);
+                  valid_p = -1;
+                }
+#endif
+              else
+                valid_p = csky_tdesc_numbered_register (feature, tdesc_data,
+                                     &m_reggroup_list, &m_user_reg_list,
+                                     info.target_desc);
+            }
+          else
+            pseudo_reg_feature = feature;
+          if (valid_p < 0)
+            {
+              free_reggroup_list ();
+              free_user_reg_list ();
+              tdesc_data_cleanup (tdesc_data);
+              return NULL;
+            }
+          count++;
+          feature = csky_tdesc_find_feature (info.target_desc, count);
+        }
+      /* Whether LR SP PC have been discribed.  */
+      valid_p = csky_essential_reg_check (tdesc_data);
+      if (valid_p < 0)
+        {
+          free_reggroup_list ();
+          free_user_reg_list ();
+          tdesc_data_cleanup (tdesc_data);
+          return NULL;
+        }
+      /* Analysis feature for discribing pseudo regs.  */
+      if (pseudo_reg_feature)
+        {
+          num_pseudo_regs = csky_tdesc_get_pseudo_regs (pseudo_reg_feature,
+                                                        tdesc_data,
+                                                        &m_pseudo_reg_list,
+                                                        &m_reggroup_list,
+                                                        info.target_desc);
+          if (num_pseudo_regs < 0)
+            {
+              free_reggroup_list ();
+              free_user_reg_list ();
+              csky_tdesc_free_pseudo_reg_list (&m_pseudo_reg_list);
+              tdesc_data_cleanup (tdesc_data);
+              return NULL;
+            }
+          csky_tdesc_pseudo_reg_name_exists_check (m_pseudo_reg_list,
+                                                   tdesc_data);
+        }
+    }
 
   /* "file" command interface transplantation.  */
   deprecated_exec_file_display_hook = csky_check_file_abi;
 
-/*  Get e_flags form abfd.  */
+  /*  Get e_flags form abfd.  */
   if (info.abfd)
     abfd_e_flags = elf_elfheader (info.abfd)->e_flags;
 #ifndef CSKYGDB_CONFIG_ABIV2
@@ -3410,7 +3697,6 @@ csky_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
             case CSKY_ARCH_801:
             case CSKY_ARCH_802:
             case CSKY_ARCH_803:
-            case CSKY_ARCH_803S:
             case CSKY_ARCH_807:
             case CSKY_ARCH_810:
               mach = abfd_e_flags & CSKY_ARCH_MASK;
@@ -3452,6 +3738,8 @@ csky_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 
   if (best_arch != NULL)
     {
+      if (tdesc_data != NULL)
+        tdesc_data_cleanup (tdesc_data);
       return best_arch->gdbarch;
     }
 
@@ -3460,8 +3748,24 @@ csky_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   tdep->lr_type_p = 0;
   tdep->return_reg = CSKY_RET_REGNUM;
   tdep->mach = mach;
-  tdep->selected_registers = csky_selected_register_p;
+  num_regs = csky_get_max_regnum_from_tdesc_data (tdesc_data);
+  if (tdesc_data)
+  {
+     /* FIXME if gdb does not exit when debug is over a time,
+        tdep->selected_registers should be freed when gdbarch_free()
+        and it is malloced.  */
+     int i, regs_count;
+     regs_count = num_regs + num_pseudo_regs;
+     tdep->selected_registers = (char *) malloc (sizeof (char) * regs_count);
+     for (i = 0; i < regs_count; i++)
+       tdep->selected_registers[i] = 1;
+  }
+  else
+  {
+     tdep->selected_registers = csky_selected_register_p;
+  }
   gdbarch = gdbarch_alloc (&info, tdep);
+
 
   set_gdbarch_read_pc (gdbarch, csky_read_pc);
   set_gdbarch_write_pc (gdbarch, csky_write_pc);
@@ -3522,6 +3826,37 @@ csky_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   /* Support embeded dynamic library debugging. */
   set_solib_svr4_fetch_link_map_offsets (gdbarch,
                                          svr4_ilp32_fetch_link_map_offsets);
+  if (m_pseudo_reg_list)
+    {
+      set_gdbarch_num_pseudo_regs (gdbarch, num_pseudo_regs);
+      set_tdesc_pseudo_register_name (gdbarch, csky_pseudo_register_name);
+      set_gdbarch_pseudo_register_read (gdbarch, csky_pseudo_register_read);
+      set_gdbarch_pseudo_register_write (gdbarch, csky_pseudo_register_write);
+    }
+  if (tdesc_data)
+    {
+      set_gdbarch_num_regs (gdbarch, num_regs);
+      tdesc_use_registers (gdbarch, info.target_desc, tdesc_data);
+      set_gdbarch_register_name (gdbarch, csky_register_name);
+      set_gdbarch_register_type (gdbarch, csky_register_type);
+      set_gdbarch_register_reggroup_p (gdbarch,
+                                       csky_target_desc_register_reggroup_p);
+      /* Tdesc_use_register() will set actual num_regs to gdbarch in the xml,
+         but have written reg's alias with normal reg together, so we set it
+         again for the actual num_regs we want.  */
+      set_gdbarch_num_regs (gdbarch, num_regs);
+    }
+  if (m_user_reg_list)
+    {
+      struct user_reg_list *tmp;
+      tmp = m_user_reg_list;
+      while (tmp)
+        {
+          user_reg_add(gdbarch, tmp->name, value_of_csky_user_reg,
+                       &tmp->target_regnum);
+          tmp=tmp->next;
+        }
+    }
   return gdbarch;
 }
 

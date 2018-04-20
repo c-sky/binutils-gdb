@@ -249,3 +249,35 @@ _initialize_user_regs (void)
 	   _("List the names of the current user registers.\n"),
 	   &maintenanceprintlist);
 }
+
+
+#ifdef CSKYGDB_CONFIG
+/* Add csky user reg name add regnum to m_user_reg_list.  */
+
+void
+csky_user_reg_list_add (struct user_reg_list **list, char *name, int regnum)
+{
+  struct user_reg_list *tmp;
+  tmp = *list;
+  if (*list == NULL)
+    {
+      (*list) = (struct user_reg_list *) malloc (
+              sizeof (struct user_reg_list));
+      (*list)->next = NULL;
+      (*list)->name = name;
+      (*list)->target_regnum = regnum;
+    }
+  else
+    {
+      struct user_reg_list *user_reg;
+      while (tmp->next != NULL)
+        tmp=tmp->next;
+      user_reg = (struct user_reg_list *) malloc (
+               sizeof (struct user_reg_list));
+      user_reg->next = NULL;
+      user_reg->name = name;
+      user_reg->target_regnum = regnum;
+      tmp->next = user_reg;
+    }
+}
+#endif

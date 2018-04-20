@@ -657,6 +657,9 @@ source_command (char *args, int from_tty)
 
   if (args)
     {
+#ifdef CSKYGDB_CONFIG
+      int filenamelen;
+#endif
       while (args[0] != '\0')
 	{
 	  /* Make sure leading white space does not break the
@@ -683,8 +686,22 @@ source_command (char *args, int from_tty)
 	  else
 	    break;
 	}
+#ifdef CSKYGDB_CONFIG
+      while (isspace (args[0]) || '\"' == args[0])
+        args++;
 
+      filenamelen = strlen(args);
+      while (isspace (args[filenamelen - 1])  ||
+                '\"' == args[filenamelen - 1])
+        {
+          args[filenamelen - 1] = '\0';
+          filenamelen --;
+        }
+
+      file = args;
+#else  /* not CSKYGDB_CONFIG */
       file = skip_spaces (args);
+#endif /* not CSKYGDB_CONFIG */
     }
 
   source_script_with_search (file, from_tty, search_path);

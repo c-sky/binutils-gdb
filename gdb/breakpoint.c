@@ -81,6 +81,10 @@
 #include "mi/mi-common.h"
 #include "extension.h"
 
+#ifdef CSKYGDB_CONFIG
+#include "csky-tdep.h"
+#endif
+
 /* Enums for exception-handling support.  */
 enum exception_event_kind
 {
@@ -214,6 +218,10 @@ static int hw_watchpoint_used_count_others (struct breakpoint *except,
 static void hbreak_command (char *, int);
 
 static void thbreak_command (char *, int);
+
+#ifdef CSKYGDB_CONFIG
+static void autobreak_command (char *, int);
+#endif
 
 static void enable_breakpoint_disp (struct breakpoint *, enum bpdisp,
 				    int count);
@@ -2652,7 +2660,12 @@ insert_bp_location (struct bp_location *bl,
   if (bl->loc_type == bp_loc_software_breakpoint
       || bl->loc_type == bp_loc_hardware_breakpoint)
     {
+#ifndef CSKYGDB_CONFIG
       if (bl->owner->type != bp_hardware_breakpoint)
+#else
+      if ((bl->owner->type != bp_hardware_breakpoint)
+           && (!debug_in_rom))
+#endif
 	{
 	  /* If the explicitly specified breakpoint type
 	     is not hardware breakpoint, check the memory map to see
@@ -5120,6 +5133,9 @@ watchpoints_triggered (struct target_waitstatus *ws)
 
 #define BP_TEMPFLAG 1
 #define BP_HARDWAREFLAG 2
+#ifdef CSKYGDB_CONFIG
+#define BP_CSKYAUTOFLAG 4
+#endif
 
 /* Evaluate watchpoint condition expression and check if its value
    changed.
@@ -6270,6 +6286,9 @@ bptype_string (enum bptype type)
     {bp_jit_event, "jit events"},
     {bp_gnu_ifunc_resolver, "STT_GNU_IFUNC resolver"},
     {bp_gnu_ifunc_resolver_return, "STT_GNU_IFUNC resolver return"},
+#ifdef CSKYGDB_CONFIG
+    {bp_auto_breakpoint, "CSKY auto breakpoint"},
+#endif
   };
 
   if (((int) type >= (sizeof (bptypes) / sizeof (bptypes[0])))
@@ -7354,7 +7373,7 @@ init_bp_location (struct bp_location *loc, const struct bp_location_ops *ops,
   loc->cond_bytecode = NULL;
   loc->shlib_disabled = 0;
   loc->enabled = 1;
-
+#ifndef CSKYGDB_CONFIG
   switch (owner->type)
     {
     case bp_breakpoint:
@@ -7403,7 +7422,110 @@ init_bp_location (struct bp_location *loc, const struct bp_location_ops *ops,
     default:
       internal_error (__FILE__, __LINE__, _("unknown breakpoint type"));
     }
-
+#else   /* CSKYGDB_CONFIG */
+   if (debug_in_rom)
+     {
+       switch (owner->type)
+         {
+         case bp_breakpoint:
+         case bp_single_step:
+         case bp_longjmp:
+         case bp_longjmp_resume:
+         case bp_longjmp_call_dummy:
+         case bp_exception:
+         case bp_exception_resume:
+         case bp_hp_step_resume:
+         case bp_watchpoint_scope:
+         case bp_std_terminate:
+         case bp_shlib_event:
+         case bp_thread_event:
+         case bp_overlay_event:
+         case bp_jit_event:
+         case bp_longjmp_master:
+         case bp_std_terminate_master:
+         case bp_exception_master:
+         case bp_gnu_ifunc_resolver:
+         case bp_gnu_ifunc_resolver_return:
+         case bp_dprintf:
+           loc->loc_type = bp_loc_software_breakpoint;
+           mark_breakpoint_location_modified (loc);
+           break;
+         case bp_hardware_breakpoint:
+         case bp_until:
+         case bp_finish:
+         case bp_step_resume:
+         case bp_call_dummy:
+           loc->loc_type = bp_loc_hardware_breakpoint;
+           mark_breakpoint_location_modified (loc);
+           break;
+         case bp_hardware_watchpoint:
+         case bp_read_watchpoint:
+         case bp_access_watchpoint:
+           loc->loc_type = bp_loc_hardware_watchpoint;
+           break;
+         case bp_watchpoint:
+         case bp_catchpoint:
+         case bp_tracepoint:
+         case bp_fast_tracepoint:
+         case bp_static_tracepoint:
+           loc->loc_type = bp_loc_other;
+           break;
+         default:
+           internal_error (__FILE__, __LINE__, _("unknown breakpoint type"));
+         }
+     }
+   else
+     {
+       switch (owner->type)
+         {
+         case bp_breakpoint:
+         case bp_single_step:
+         case bp_until:
+         case bp_finish:
+         case bp_longjmp:
+         case bp_longjmp_resume:
+         case bp_longjmp_call_dummy:
+         case bp_exception:
+         case bp_exception_resume:
+         case bp_step_resume:
+         case bp_hp_step_resume:
+         case bp_watchpoint_scope:
+         case bp_call_dummy:
+         case bp_std_terminate:
+         case bp_shlib_event:
+         case bp_thread_event:
+         case bp_overlay_event:
+         case bp_jit_event:
+         case bp_longjmp_master:
+         case bp_std_terminate_master:
+         case bp_exception_master:
+         case bp_gnu_ifunc_resolver:
+         case bp_gnu_ifunc_resolver_return:
+         case bp_dprintf:
+           loc->loc_type = bp_loc_software_breakpoint;
+           mark_breakpoint_location_modified (loc);
+           break;
+         case bp_hardware_breakpoint:
+           loc->loc_type = bp_loc_hardware_breakpoint;
+           mark_breakpoint_location_modified (loc);
+           break;
+         case bp_hardware_watchpoint:
+         case bp_read_watchpoint:
+         case bp_access_watchpoint:
+           loc->loc_type = bp_loc_hardware_watchpoint;
+           break;
+         case bp_watchpoint:
+         case bp_catchpoint:
+         case bp_tracepoint:
+         case bp_fast_tracepoint:
+         case bp_static_tracepoint:
+           loc->loc_type = bp_loc_other;
+           break;
+         default:
+           internal_error (__FILE__, __LINE__, _("unknown breakpoint type"));
+         }
+     }
+#endif  /* CSKYGDB_CONFIG */
   loc->refc = 1;
 }
 
@@ -9442,6 +9564,63 @@ create_breakpoint_sal (struct gdbarch *gdbarch,
   install_breakpoint (internal, b, 0);
 }
 
+#ifdef CSKYGDB_CONFIG
+/* (sals.sals)->pc is the address we want to making a breakpoint.
+   Try to change its contents for testing if the address could
+   been written. if true,we will change this breakpoint to
+   normal break. if not ,we will change it to hardware breakpoint.  */
+
+static int
+cskyautotype (struct symtabs_and_lines sals)
+{
+   gdb_byte buf_save[4], buf_tmp[4];
+   gdb_byte buf_read[4] = {1, 1, 1, 1} ;
+   if (target_read_memory ((sals.sals)->pc, buf_save, 4) )
+     {
+       //error
+       return -1;
+     }
+   buf_tmp[0] = (buf_save[0] + 1) & 0xff;
+   buf_tmp[1] = (buf_save[1] + 1) & 0xff;
+   buf_tmp[2] = (buf_save[2] + 1) & 0xff;
+   buf_tmp[3] = (buf_save[3] + 1) & 0xff;
+   if (target_write_memory ((sals.sals)->pc, buf_tmp, 4))
+     {
+       //error
+       return -1;
+     }
+   if (target_read_memory ((sals.sals)->pc, buf_read, 4))
+     {
+       //error
+       return -1;
+     }
+   if ((buf_read[0] == buf_save[0]) && (buf_read[1] == buf_save[1])
+        && (buf_read[2] == buf_save[2]) && (buf_read[3] == buf_save[3]))
+     {
+       return bp_hardware_breakpoint;
+     }
+   else if ((buf_read[0] == buf_tmp[0]) && (buf_read[1] == buf_tmp[1])
+            && (buf_read[2] == buf_tmp[2]) && (buf_read[3] == buf_tmp[3]))
+     {
+       if (target_write_memory ((sals.sals)->pc, buf_save, 4))
+         {
+           //error
+           return -1;
+         }
+        return bp_breakpoint;
+     }
+   else
+     {
+       if (target_write_memory ((sals.sals)->pc, buf_save, 4))
+         {
+           //error
+           return -1;
+         }
+       return -1;
+     }
+}
+#endif /* CSKYGDB_CONFIG */
+
 /* Add SALS.nelts breakpoints to the breakpoint table.  For each
    SALS.sal[i] breakpoint, include the corresponding ADDR_STRING[i]
    value.  COND_STRING, if not NULL, specified the condition to be
@@ -9481,7 +9660,19 @@ create_breakpoints_sal (struct gdbarch *gdbarch,
 	   ? copy_event_location (canonical->location) : NULL);
       char *filter_string = lsal->canonical ? xstrdup (lsal->canonical) : NULL;
       struct cleanup *inner = make_cleanup_delete_event_location (location);
-
+#ifdef CSKYGDB_CONFIG
+      if (type == bp_auto_breakpoint)
+        {
+          int ret;
+          ret = cskyautotype (lsal->sals);
+          if (type == -1)
+            {
+              error(_("Fail to create auto-breakpoint because couldn't get "
+                      "the attribute of address 0x%x.\n"), ((lsal->sals).sals)->pc);
+            }
+          type = (enum bptype) ret;
+        }
+#endif
       make_cleanup (xfree, filter_string);
       create_breakpoint_sal (gdbarch, lsal->sals,
 			     location,
@@ -9930,7 +10121,10 @@ create_breakpoint (struct gdbarch *gdbarch,
 	}
       else
 	b = XNEW (struct breakpoint);
-
+#ifdef CSKYGDB_CONFIG
+      if(type_wanted == bp_auto_breakpoint)
+          type_wanted = bp_breakpoint;
+#endif
       init_raw_breakpoint_without_location (b, gdbarch, type_wanted, ops);
       b->location = copy_event_location (location);
 
@@ -9996,9 +10190,17 @@ static void
 break_command_1 (char *arg, int flag, int from_tty)
 {
   int tempflag = flag & BP_TEMPFLAG;
+#ifndef CSKYGDB_CONFIG
   enum bptype type_wanted = (flag & BP_HARDWAREFLAG
 			     ? bp_hardware_breakpoint
 			     : bp_breakpoint);
+#else /* CSKYGDB_CONFIG */
+  enum bptype type_wanted = (flag & BP_HARDWAREFLAG
+			     ? bp_hardware_breakpoint
+			     : flag & BP_CSKYAUTOFLAG ?
+                             bp_auto_breakpoint : bp_breakpoint);
+#endif /* CSKYGDB_CONFIG */
+
   struct breakpoint_ops *ops;
   struct event_location *location;
   struct cleanup *cleanup;
@@ -10089,12 +10291,24 @@ resolve_sal_pc (struct symtab_and_line *sal)
 void
 break_command (char *arg, int from_tty)
 {
+#ifdef CSKYGDB_CONFIG
+  if (debug_in_rom)
+    {
+      warning (_("In debug-in-rom mode, may not support break commnad."));
+    }
+#endif
   break_command_1 (arg, 0, from_tty);
 }
 
 void
 tbreak_command (char *arg, int from_tty)
 {
+#ifdef CSKYGDB_CONFIG
+  if (debug_in_rom)
+    {
+      warning (_("In debug-in-rom mode, may not support break commnad."));
+    }
+#endif
   break_command_1 (arg, BP_TEMPFLAG, from_tty);
 }
 
@@ -10109,6 +10323,19 @@ thbreak_command (char *arg, int from_tty)
 {
   break_command_1 (arg, (BP_TEMPFLAG | BP_HARDWAREFLAG), from_tty);
 }
+
+#ifdef CSKYGDB_CONFIG
+static void
+autobreak_command (char *arg, int from_tty)
+{
+  if (!target_has_execution)
+    {
+      printf_filtered (_("Please specify the target before using this command.\n"));
+      return;
+    }
+  break_command_1 (arg, BP_CSKYAUTOFLAG, from_tty);
+}
+#endif
 
 static void
 stop_command (char *arg, int from_tty)
@@ -16239,6 +16466,18 @@ so it will be deleted when hit.\n\
 \n"
 BREAK_ARGS_HELP ("thbreak")));
   set_cmd_completer (c, location_completer);
+
+#ifdef CSKYGDB_CONFIG
+c = add_com ("autobreak", class_breakpoint, autobreak_command, _("\
+Set a breakpoint automatically.\n\
+When you don't know the program is running in flash or rom, you can\n\
+use 'autobreak + args' to create a breakpoint.\n\
+We will change it to break or hbreak according to the target.\n\
+And you should specify the target before using this command.\n\
+\n"
+BREAK_ARGS_HELP ("autobreak")));
+  set_cmd_completer (c, location_completer);
+#endif /* CSKYGDB_CONFIG */
 
   add_prefix_cmd ("enable", class_breakpoint, enable_command, _("\
 Enable some breakpoints.\n\

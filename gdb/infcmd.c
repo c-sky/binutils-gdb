@@ -58,7 +58,11 @@
 #include "thread-fsm.h"
 #include "top.h"
 #include "interps.h"
-
+#ifdef CSKYGDB_CONFIG
+#include "csky-tdep.h"
+#include "location.h"
+#include "cli/cli-cmds.h"
+#endif
 /* Local functions: */
 
 static void nofp_registers_info (char *, int);
@@ -482,6 +486,9 @@ post_create_inferior (struct target_ops *target, int from_tty)
    from the beginning.  Ask the user to confirm that he wants to restart
    the program being debugged when FROM_TTY is non-null.  */
 
+#ifdef CSKYGDB_CONFIG
+extern int already_load;
+#endif
 static void
 kill_if_already_running (int from_tty)
 {
@@ -492,6 +499,9 @@ kill_if_already_running (int from_tty)
       target_require_runnable ();
 
       if (from_tty
+#ifdef CSKYGDB_CONFIG
+          && (!already_load)
+#endif
 	  && !query (_("The program being debugged has been started already.\n\
 Start it from the beginning? ")))
 	error (_("Program not restarted."));
@@ -572,8 +582,38 @@ run_command_1 (char *args, int from_tty, int tbreak_at_main)
 
   /* Insert the temporary breakpoint if a location was specified.  */
   if (tbreak_at_main)
+#ifndef CSKYGDB_CONFIG
     tbreak_command (main_name (), 0);
+#else  /* CSKYGDB_CONFIG */
+    {
+      if (debug_in_rom)
+        {
+          int tempflag = 1;
+          enum bptype type_wanted = bp_step_resume;
+          struct event_location *location;
+          struct cleanup *cleanup;
+          char *main_name_str = main_name();
 
+          location = string_to_event_location (&main_name_str, current_language);
+          cleanup = make_cleanup_delete_event_location (location);
+          create_breakpoint (get_current_arch (),
+                     location,
+                     NULL, 0, main_name_str, 1 /* parse arg */,
+                     tempflag, type_wanted,
+                     0 /* Ignore count */,
+                     AUTO_BOOLEAN_FALSE,
+                     NULL /* breakpoint_ops */,
+                     0,
+                     1 /* enabled */,
+                     1 /* internal*/,
+                     0 /* flags */);
+        }
+      else
+        {
+          tbreak_command (main_name (), 0);
+        }
+    }
+#endif /* CSKYGDB_CONFIG */
   exec_file = (char *) get_exec_file (0);
 
   /* We keep symbols from add-symbol-file, on the grounds that the
@@ -724,6 +764,41 @@ continue_1 (int all_threads)
 {
   ERROR_NO_INFERIOR;
   ensure_not_tfind_mode ();
+
+#ifdef CSKYGDB_CONFIG
+  if (gdbcontinuefile)
+    {
+      struct gdb_exception exception = exception_none;
+      struct ui_out *saved_uiout;
+
+      /* Save the global ``struct ui_out'' builder.  */
+      saved_uiout = current_uiout;
+
+      TRY
+        {
+          source_script (gdbcontinuefile, 0);
+        }
+      CATCH (ex, RETURN_MASK_ALL)
+        {
+          exception = ex;
+        }
+      END_CATCH
+
+      /* Restore the global builder.  */
+      current_uiout = saved_uiout;
+
+      if (exception.reason < 0 && (RETURN_MASK_ALL
+                                   & RETURN_MASK (exception.reason)) == 0)
+        {
+          /* The caller didn't request that the event be caught.
+             Rethrow.  */
+          throw_exception (exception);
+        }
+
+      if (exception.reason != 0)
+        return;
+    }
+#endif /* CSKYGDB_CONFIG */
 
   if (non_stop && all_threads)
     {
@@ -1608,7 +1683,11 @@ get_return_value (struct value *function, struct type *value_type)
   struct value *value;
   struct cleanup *cleanup;
 
+#ifdef CSKYGDB_CONFIG
+  stop_regs = regcache_dup_reglist (get_current_regcache ());
+#else  /* not CSKYGDB_CONFIG */
   stop_regs = regcache_dup (get_current_regcache ());
+#endif /* not CSKYGDB_CONFIG */
   cleanup = make_cleanup_regcache_xfree (stop_regs);
 
   gdbarch = get_regcache_arch (stop_regs);

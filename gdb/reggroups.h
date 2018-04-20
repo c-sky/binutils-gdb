@@ -23,9 +23,31 @@
 #define REGGROUPS_H
 
 struct gdbarch;
+
+#ifndef CSKYGDB_CONFIG
 struct reggroup;
 
 enum reggroup_type { USER_REGGROUP, INTERNAL_REGGROUP };
+
+#else /* CSKYGDB_CONFIG */
+
+enum reggroup_type { USER_REGGROUP, INTERNAL_REGGROUP };
+
+struct reggroup
+{
+  const char *name;
+  enum reggroup_type type;
+};
+
+/* A linked list of groups for the given architecture.  */
+
+struct reggroup_el
+{
+  struct reggroup *group;
+  struct reggroup_el *next;
+};
+#endif /* CSKYGDB_CONFIG */
+
 
 /* Pre-defined, user visible, register groups.  */
 extern struct reggroup *const general_reggroup;
@@ -61,5 +83,9 @@ extern struct reggroup *reggroup_prev (struct gdbarch *gdbarch,
 /* Is REGNUM a member of REGGROUP?  */
 extern int default_register_reggroup_p (struct gdbarch *gdbarch, int regnum,
 					struct reggroup *reggroup);
+#ifdef CSKYGDB_CONFIG
+/* For csky reggroup add */
+void csky_reggroup_name_add (struct reggroup_el **list, const char *name);
+#endif
 
 #endif

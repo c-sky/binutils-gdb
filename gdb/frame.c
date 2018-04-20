@@ -2873,3 +2873,21 @@ When non-zero, frame specific internal debugging is enabled."),
 			     show_frame_debug,
 			     &setdebuglist, &showdebuglist);
 }
+
+#ifdef CSKYGDB_CONFIG
+/* For csky: only read registers in the selected register list
+   for debug speed.  */
+
+struct regcache *
+frame_save_as_regcache_reglist (struct frame_info *this_frame)
+{
+  struct address_space *aspace = get_frame_address_space (this_frame);
+  struct regcache *regcache = regcache_xmalloc (get_frame_arch (this_frame),
+                                                aspace);
+  struct cleanup *cleanups = make_cleanup_regcache_xfree (regcache);
+
+  regcache_save_reglist (regcache, do_frame_register_read, this_frame);
+  discard_cleanups (cleanups);
+  return regcache;
+}
+#endif /* CSKYGDB_CONFIG */

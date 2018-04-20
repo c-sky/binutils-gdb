@@ -1,0 +1,150 @@
+<?xml version="1.0"?>
+<!-- Copyright (C) 2007, 2008, 2009, 2010 Free Software Foundation, Inc.
+
+     Copying and distribution of this file, with or without modification,
+     are permitted in any medium without royalty provided the copyright
+     notice and this notice are preserved.  
+
+  *  Copyright (C) 2006 Hangzhou C-SKY Microsystems co.,ltd. <www.c-csky.com>
+  *  Copyright (C) 2012 Jiang Long <long_jiang@c-csky.com>
+-->
+
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+<feature name="org.gnu.gdb.csky.linux">
+  <reg name="r0" bitsize="32" regnum="0"/>
+  <reg name="r1" bitsize="32"/>
+  <reg name="r2" bitsize="32"/>
+  <reg name="r3" bitsize="32"/>
+  <reg name="r4" bitsize="32"/>
+  <reg name="r5" bitsize="32"/>
+  <reg name="r6" bitsize="32"/>
+  <reg name="r7" bitsize="32"/>
+  <reg name="r8" bitsize="32"/>
+  <reg name="r9" bitsize="32"/>
+  <reg name="r10" bitsize="32"/>
+  <reg name="r11" bitsize="32"/>
+  <reg name="r12" bitsize="32"/>
+  <reg name="r13" bitsize="32"/>
+  <reg name="r14" bitsize="32"/>
+  <reg name="r15" bitsize="32"/>
+
+  <reg name ="none16" bitsize="32"/>
+  <reg name ="none17" bitsize="32"/>
+  <reg name ="none18" bitsize="32"/>
+  <reg name ="none19" bitsize="32"/>
+
+  <reg name="hi" bitsize="32" regnum="20"/>
+  <reg name="lo" bitsize="32"/>
+
+  <reg name ="none22" bitsize="32"/>
+  <reg name ="none23" bitsize="32"/>
+
+  <reg name="cp1gr0" bitsize="32" regnum="24"/>
+  <reg name="cp1gr1" bitsize="32"/>
+  <reg name="cp1gr2" bitsize="32"/>
+  <reg name="cp1gr3" bitsize="32"/>
+  <reg name="cp1gr4" bitsize="32"/>
+  <reg name="cp1gr5" bitsize="32"/>
+  <reg name="cp1gr6" bitsize="32"/>
+  <reg name="cp1gr7" bitsize="32"/>
+  <reg name="cp1gr8" bitsize="32"/>
+  <reg name="cp1gr9" bitsize="32"/>
+  <reg name="cp1gr10" bitsize="32"/>
+  <reg name="cp1gr11" bitsize="32"/>
+  <reg name="cp1gr12" bitsize="32"/>
+  <reg name="cp1gr13" bitsize="32"/>
+  <reg name="cp1gr14" bitsize="32"/>
+  <reg name="cp1gr15" bitsize="32"/>
+  <reg name="cp1gr16" bitsize="32"/>
+  <reg name="cp1gr17" bitsize="32"/>
+  <reg name="cp1gr18" bitsize="32"/>
+  <reg name="cp1gr19" bitsize="32"/>
+  <reg name="cp1gr20" bitsize="32"/>
+  <reg name="cp1gr21" bitsize="32"/>
+  <reg name="cp1gr22" bitsize="32"/>
+  <reg name="cp1gr23" bitsize="32"/>
+  <reg name="cp1gr24" bitsize="32"/>
+  <reg name="cp1gr25" bitsize="32"/>
+  <reg name="cp1gr26" bitsize="32"/>
+  <reg name="cp1gr27" bitsize="32"/>
+  <reg name="cp1gr28" bitsize="32"/>
+  <reg name="cp1gr29" bitsize="32"/>
+  <reg name="cp1gr30" bitsize="32"/>
+  <reg name="cp1gr31" bitsize="32"/>
+
+  <reg name ="none56" bitsize="32"/>
+  <reg name ="none57" bitsize="32"/>
+  <reg name ="none58" bitsize="32"/>
+  <reg name ="none59" bitsize="32"/>
+  <reg name ="none60" bitsize="32"/>
+  <reg name ="none61" bitsize="32"/>
+  <reg name ="none62" bitsize="32"/>
+  <reg name ="none63" bitsize="32"/>
+  <reg name ="none64" bitsize="32"/>
+  <reg name ="none65" bitsize="32"/>
+  <reg name ="none66" bitsize="32"/>
+  <reg name ="none67" bitsize="32"/> 
+  <reg name ="none68" bitsize="32"/>
+  <reg name ="none69" bitsize="32"/>
+  <reg name ="none70" bitsize="32"/>
+  <reg name ="none71" bitsize="32"/>
+  
+  <reg name="pc" bitsize="32" regnum="72"/>
+
+  <reg name ="none73" bitsize="32"/>
+  <reg name ="none74" bitsize="32"/>
+  <reg name ="none75" bitsize="32"/>
+  <reg name ="none76" bitsize="32"/>
+  <reg name ="none77" bitsize="32"/>
+  <reg name ="none78" bitsize="32"/>
+  <reg name ="none79" bitsize="32"/>
+  <reg name ="none80" bitsize="32"/>
+  <reg name ="none81" bitsize="32"/>
+  <reg name ="none82" bitsize="32"/>
+  <reg name ="none83" bitsize="32"/>
+  <reg name ="none84" bitsize="32"/>
+  <reg name ="none85" bitsize="32"/>
+  <reg name ="none86" bitsize="32"/>
+  <reg name ="none87" bitsize="32"/>
+  <reg name ="none88" bitsize="32"/>
+
+  <reg name="psr" bitsize="32" regnum="89"/>
+
+  <reg name ="none90" bitsize="32"/>
+  <reg name ="none91" bitsize="32"/>
+  <reg name ="none92" bitsize="32"/>
+  <reg name ="none93" bitsize="32"/>
+  <reg name ="none94" bitsize="32"/>
+  <reg name ="none95" bitsize="32"/>
+  <reg name ="none96" bitsize="32"/>
+  <reg name ="none97" bitsize="32"/>
+  <reg name ="none98" bitsize="32"/>
+  <reg name ="none99" bitsize="32"/>
+  <reg name ="none100" bitsize="32"/>
+  <reg name ="none101" bitsize="32"/>
+  <reg name ="none102" bitsize="32"/>
+  <reg name ="none103" bitsize="32"/>
+  <reg name ="none104" bitsize="32"/>
+  <reg name ="none105" bitsize="32"/>
+  <reg name ="none106" bitsize="32"/>
+  <reg name ="none107" bitsize="32"/>
+  <reg name ="none108" bitsize="32"/>
+  <reg name ="none109" bitsize="32"/>
+  <reg name ="none110" bitsize="32"/>
+  <reg name ="none111" bitsize="32"/>
+  <reg name ="none112" bitsize="32"/>
+  <reg name ="none113" bitsize="32"/>
+  <reg name ="none114" bitsize="32"/>
+  <reg name ="none115" bitsize="32"/>
+  <reg name ="none116" bitsize="32"/>
+  <reg name ="none117" bitsize="32"/>
+  <reg name ="none118" bitsize="32"/>
+  <reg name ="none119" bitsize="32"/>
+  <reg name ="none120" bitsize="32"/>
+
+  <reg name ="none121" bitsize="32" regnum="121"/>
+  <reg name="cp1cr1" bitsize="32"/>
+  <reg name="cp1cr2" bitsize="32"/>
+  <reg name="none124" bitsize="32"/>
+  <reg name="cp1cr4" bitsize="32"/>
+</feature>

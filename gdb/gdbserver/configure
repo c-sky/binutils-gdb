@@ -709,6 +709,7 @@ enable_inprocess_agent
       ac_precious_vars='build_alias
 host_alias
 target_alias
+csky_linux_version
 CC
 CFLAGS
 LDFLAGS
@@ -718,6 +719,7 @@ CXX
 CXXFLAGS
 CCC
 CPP'
+
 
 
 # Initialize some variables set by options.
@@ -888,6 +890,10 @@ do
     ac_prev=host_alias ;;
   -host=* | --host=* | --hos=* | --ho=*)
     host_alias=$ac_optarg ;;
+
+  # Add for csky linux
+  -kernelversion=* | --kernelversion=* | --kernel-version=*)
+    csky_linux_version=$ac_optarg ;;
 
   -htmldir | --htmldir | --htmldi | --htmld | --html | --htm | --ht)
     ac_prev=htmldir ;;
@@ -6884,6 +6890,15 @@ if test "${srv_linux_usrregs}" = "yes"; then
 
 $as_echo "#define HAVE_LINUX_USRREGS 1" >>confdefs.h
 
+fi
+
+# Add for csky linux
+if test "${csky_linux_version}" = "2.6.27.55"; then
+# csky linux-2.6.27.55 dose not support srv_linux_regset right now
+# when 2.6.27.55 support srv_linux_regset, remove this
+srv_linux_regsets=no
+# insert __CSKY_LINUX_2_6_27_55__ into config.h
+$as_echo "#define __CSKY_LINUX_2_6_27_55__ 1" >>confdefs.h
 fi
 
 if test "${srv_linux_regsets}" = "yes"; then

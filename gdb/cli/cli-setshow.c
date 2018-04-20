@@ -592,6 +592,15 @@ do_show_command (const char *arg, int from_tty, struct cmd_list_element *c)
     case var_enum:
       if (*(char **) c->var)
 	fputs_filtered (*(char **) c->var, stb);
+#ifdef CSKYGDB_CONFIG
+      else if (!strcmp (c->name, "endian"))
+             {
+               if (gdbarch_byte_order (get_current_arch ()) == BFD_ENDIAN_BIG)
+                 fputs_filtered ("big", stb);
+               else
+                 fputs_filtered ("little", stb);
+             }
+#endif
       break;
     case var_boolean:
       fputs_filtered (*(int *) c->var ? "on" : "off", stb);

@@ -211,11 +211,26 @@ inline_frame_sniffer (const struct frame_unwind *self,
   int depth;
   struct frame_info *next_frame;
   struct inline_state *state = find_inline_frame_state (inferior_ptid);
+#ifdef CSKYGDB_CONFIG
+  int br_check = 0;
+#endif
 
   this_pc = get_frame_address_in_block (this_frame);
   frame_block = block_for_pc (this_pc);
   if (frame_block == NULL)
     return 0;
+
+#ifdef CSKYGDB_CONFIG
+  /* FIXME: This operation should not exists.This is avoiding
+     the case "br itself" when analysis inline frame.  */
+  if (this_frame && get_next_frame (this_frame)
+      && !get_next_frame (get_next_frame (this_frame)))
+    {
+      if (get_frame_pc (this_frame) ==
+          get_frame_pc (get_next_frame (this_frame)))
+        br_check = 1;
+    }
+#endif
 
   /* Calculate DEPTH, the number of inlined functions at this
      location.  */
@@ -253,6 +268,11 @@ inline_frame_sniffer (const struct frame_unwind *self,
      to the normal unwinder for this PC.  */
   if (depth == 0)
     return 0;
+
+#ifdef CSKYGDB_CONFIG
+  if (br_check)
+    return 0;
+#endif
 
   /* If the next frame is an inlined function, but not the outermost, then
      we are the next outer.  If it is not an inlined function, then we

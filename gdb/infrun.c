@@ -64,6 +64,11 @@
 #include "event-loop.h"
 #include "thread-fsm.h"
 #include "common/enum-flags.h"
+#ifdef CSKYGDB_CONFIG
+#include "csky-tdep.h"
+#include "cli/cli-cmds.h"
+#endif
+
 
 /* Prototypes for local functions */
 
@@ -8407,7 +8412,41 @@ normal_stop (void)
      longer needed.  Keeping those around slows down things linearly.
      Note that this never removes the current inferior.  */
   prune_inferiors ();
+#ifdef CSKYGDB_CONFIG
+  if (gdbstopfile)
+    {
+      struct gdb_exception exception = exception_none;
+      struct ui_out *saved_uiout;
 
+      /* Save the global ``struct ui_out'' builder.  */
+      saved_uiout = current_uiout;
+
+      TRY
+        {
+          source_script (gdbstopfile, 0);
+        }
+      CATCH (ex, RETURN_MASK_ALL)
+        {
+          exception = ex;
+        }
+      END_CATCH
+
+      /* Restore the global builder.  */
+      current_uiout = saved_uiout;
+
+      if (exception.reason < 0 && (RETURN_MASK_ALL
+                                   & RETURN_MASK (exception.reason)) == 0)
+        {
+          /* The caller didn't request that the event be caught.
+             Rethrow.  */
+          throw_exception (exception);
+        }
+
+      if (exception.reason != 0)
+        return 0;
+
+    }
+#endif
   return 0;
 }
 

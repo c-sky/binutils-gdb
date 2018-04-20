@@ -222,4 +222,21 @@ extern void regcache_cpy (struct regcache *dest, struct regcache *src);
 extern void registers_changed (void);
 extern void registers_changed_ptid (ptid_t);
 
+#ifdef CSKYGDB_CONFIG
+/* For csky: only read registers in the selected register list
+   for debug speed.   */
+
+extern void regcache_save_reglist (struct regcache *dst,
+                                   regcache_cooked_read_ftype *cooked_read,
+                                   void *cooked_read_context);
+extern void regcache_restore_reglist (struct regcache *dst,
+                                      regcache_cooked_read_ftype *cooked_read,
+                                      void *cooked_read_context);
+extern void regcache_cpy_reglist (struct regcache *dest,
+                                  struct regcache *src);
+extern struct regcache *regcache_dup_reglist (struct regcache *regcache);
+extern void regcache_update_prev_reglist (int regnum, struct regcache *dst,
+                                          void *src);
+#endif /* CSKYGDB_CONFIG */
+
 #endif /* REGCACHE_H */

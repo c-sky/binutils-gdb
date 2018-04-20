@@ -209,6 +209,14 @@ case "${target}" in
 			srv_linux_usrregs=yes
 			srv_linux_thread_db=yes
 			;;
+  csky*-*linux*)        srv_regobj="cskyv1-linux.o cskyv2-linux.o"
+                        srv_tgtobj="$srv_linux_obj linux-csky-low.o"
+                        srv_xmlfiles="${srv_xmlfiles} cskyv1-linux.xml"
+                        srv_xmlfiles="${srv_xmlfiles} cskyv2-linux.xml"
+                        srv_linux_regsets=yes
+                        srv_linux_usrregs=yes
+                        srv_linux_thread_db=yes
+                        ;;
   nios2*-*-linux*)	srv_regobj="nios2-linux.o"
 			srv_tgtobj="$srv_linux_obj linux-nios2-low.o"
 			srv_xmlfiles="nios2-linux.xml"

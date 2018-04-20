@@ -35,10 +35,9 @@
 #include "gdbthread.h"
 #include "breakpoint.h"
 #include "arch-utils.h"
-#include "user-regs.h"
 #include "csky-djp.h"
 #include "cli/cli-cmds.h"
-#include "csky-kernel.h"
+#include "csky-rtos.h"
 #include "opcode/csky.h"
 
 #if !defined(_WIN32) || defined (__CYGWIN__)
@@ -103,14 +102,15 @@ typedef unsigned int CORE_REG;
 extern struct breakpoint *breakpoint_chain;
 
 
-static int max_hw_breakpoint_num;
-static int max_watchpoint_num;
+static int max_hw_breakpoint_num[CSKY_MULTICORE_MAX];
+static int max_watchpoint_num[CSKY_MULTICORE_MAX];
 static int proxy_sub_ver = 0;
 static int proxy_main_ver = 0;
 
 static int resume_stepped = 0;
 static int hit_watchpoint = 0;
 static CORE_ADDR hit_watchpoint_addr = 0;
+static int resume_stepped_for_continue = 0;
 
 /* This is the ptid we use while we're connected to the remote.  Its
    value is arbitrary, as the target doesn't have a notion of
@@ -120,7 +120,13 @@ ptid_t remote_csky_ptid;
 
 int already_load = 0;
 static int load_flag = 1;
+int debug_in_rom = 0;
 static int prereset_flag = 0;
+static int csky_connecting_flag = 1;
+static int csky_rtos_ops_flag = 0;
+
+char *gdbstopfile = NULL;
+char *gdbcontinuefile = NULL;
 
 /* Download vars.  */
 static unsigned int download_write_size = 4096;
@@ -141,11 +147,21 @@ const char JTAG_HEADER[] = "jtag://";
 
 /* Defination of local variables and functions for csky_wait.  */
 static int interrupt_count = 0;
+static int csky_get_ctrlc = 0;
 static void (*ofunc) (int);
 
 /* Kernel ops.  */
 static struct kernel_ops *current_kernel_ops = NULL;
 
+/* Is current agent using multicore_thread mode.  */
+static int csky_agent_multicore_thread = -1;
+static int csky_should_use_multicore_functions (void);
+
+/* Select current cpu when multicore thread debug.  */
+static void csky_set_thread_multicore (struct ptid ptid);
+
+/* Check whether the specified cpu by ptid is running normally.  */
+static int csky_thread_alive_multicore (struct target_ops *ops, ptid_t ptid);
 
 /* For return error info.  */
 static char strError[4096];
@@ -158,6 +174,7 @@ static void csky_interrupt_query (void);
 static void seterrorinfo (const char *s);
 static char* errorinfo (void);
 static void csky_get_hw_breakpoint_num (void);
+static void csky_get_hw_breakpoint_num_mp (void);
 static void csky_get_hw_breakpoint_num_new (void);
 static void csky_get_hw_breakpoint_num_mid (void);
 static void csky_get_hw_breakpoint_num_old (void);
@@ -521,7 +538,7 @@ static int
 csky_register_convert (int regno, struct regcache *regcache)
 {
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
-#ifndef CSKYGDB_CONFIG_ABIV2 /* FOR ABIV1 */
+#ifndef CSKYGDB_CONFIG_ABIV2 /* FOR ABIV1 */ 
   if (tdesc_has_registers (gdbarch_target_desc (gdbarch)))
     return csky_target_xml_register_conversion_v1 (regno);
 
@@ -537,7 +554,7 @@ csky_register_convert (int regno, struct regcache *regcache)
     }
 #else
   if (tdesc_has_registers (gdbarch_target_desc (gdbarch)))
-      return csky_target_xml_register_conversion_v2 (regno);
+    return csky_target_xml_register_conversion_v2 (regno);
   return csky_register_conversion_v2[regno];
 #endif
 }
@@ -786,8 +803,8 @@ socket_send (SOCKET fd, void* buf, int len)
 
     if (fd == 0)
       {
-        error ("You cannot do nothing about remote target, "
-               "when the connectting is valid.\n");
+        error ("You can do nothing about the remote target "
+               "while the connectting is invalid.");
       }
 
     while (len)
@@ -805,6 +822,8 @@ socket_send (SOCKET fd, void* buf, int len)
             if (GetLastError() != WSAEWOULDBLOCK)
 #endif
               {
+                CLOSESOCKET (fd);
+                desc_fd = 0;
                 return JTAG_PROXY_SERVER_TERMINATED;
               }
             continue;
@@ -829,8 +848,8 @@ socket_receive (SOCKET fd, void* buf, int len)
 
   if (fd == 0)
     {
-      error ("You cannot do nothing about remote target, "
-             "when the connectting is valid.\n");
+      error ("You can do nothing about the remote target "
+             "while the connectting is invalid.");
     }
 
   to = 0;
@@ -840,6 +859,7 @@ socket_receive (SOCKET fd, void* buf, int len)
       if (n == 0)
         {
           CLOSESOCKET (fd);
+          desc_fd = 0;
           return JTAG_PROXY_SERVER_TERMINATED;
         }
       else if (n == SOCKET_ERROR)
@@ -857,6 +877,7 @@ socket_receive (SOCKET fd, void* buf, int len)
 #endif
             {
               CLOSESOCKET (fd);
+              desc_fd = 0;
               return JTAG_PROXY_SERVER_TERMINATED;
             }
           to++;
@@ -928,6 +949,12 @@ struct csky_hardware_ops
                                                void *data,
                                                ULONGEST len,
                                                ULONGEST *xfered_len);
+  int (*to_set_contact) (int event_in, int event_out);
+  int (*to_get_coreasthread) (int qcore_type, int *lwp);
+  int (*to_check_threadalive) (int lwp, int *alive_status);
+  int (*to_check_agent_mode) (int *agent_mode);
+  int (*to_select_thread) (struct ptid ptid);
+  int (*to_get_thread_extra_info) (int lwp, char *data);
   void (*to_exec_command) (char *args, int from_tty);
   /* Executes extended command on the target.  */
   int to_magic;    /* Should be OPS_MAGIC.  */
@@ -974,6 +1001,12 @@ static int hardware_server_version (int *version);
 static enum target_xfer_status
 hardware_read_xmltdesc (ULONGEST offset, void *data,
                         ULONGEST len, ULONGEST *xfered_len);
+static int hardware_set_contact (int event_in, int event_out);
+static int hardeware_get_coreasthread (int qcore_type, int *lwp);
+static int hardware_check_threadalive (int lwp, int *alive_status);
+static int hardware_check_agent_mode (int *agent_mode);
+static int hardware_select_thread (struct ptid ptid);
+static int hardware_get_thread_extra_info (int lwp, char *data);
 
 /* --------------------------------------------
    D&JP protocol level for hardware operations
@@ -1012,6 +1045,12 @@ static int djp_do_error (S32 status);
 static enum target_xfer_status
 djp_read_xmltdesc (ULONGEST offset, void *data,
                    ULONGEST len, ULONGEST *xfered_len);
+static int djp_set_contact (int event_in, int event_out);
+static int djp_get_coreasthread (int qcore_type, int *lwp);
+static int djp_check_threadalive (int lwp, int *alive_status);
+static int djp_check_agent_mode (int *agent_mode);
+static int djp_select_thread (struct ptid ptid);
+static int djp_get_thread_extra_info (int lwp, char *data);
 
 static struct csky_hardware_ops djp_ops =
 {
@@ -1045,6 +1084,12 @@ static struct csky_hardware_ops djp_ops =
   djp_endianinfo,
   djp_server_version,
   djp_read_xmltdesc,
+  djp_set_contact,
+  djp_get_coreasthread,
+  djp_check_threadalive,
+  djp_check_agent_mode,
+  djp_select_thread,
+  djp_get_thread_extra_info,
   NULL,
   OPS_MAGIC
 };
@@ -1984,7 +2029,11 @@ djp_exit_debug ()
     {
       DJP_DEBUG_PRINTF ((" socket send error.\n"));
       seterrorinfo ("proxy server broken, please check your server.\n");
-      inferior_ptid = null_ptid;
+      /* We can't assign inferior_ptid as null_ptid here, as if
+         when target resume return, gdb will notify other observers
+         using inferior_ptid->suspend.staop_signal. If inferior_ptid
+         is not found, gdb will assert failed.  */
+      /* inferior_ptid = null_ptid;  */
       return result;
     }
 
@@ -1993,7 +2042,7 @@ djp_exit_debug ()
     {
       DJP_DEBUG_PRINTF ((" socket receive error.\n"));
       seterrorinfo ("proxy server broken, please check your server.\n");
-      inferior_ptid = null_ptid;
+      /* inferior_ptid = null_ptid;  */
       return result;
     }
 
@@ -2024,7 +2073,11 @@ djp_singlestep ()
     {
       DJP_DEBUG_PRINTF ((" socket send error.\n"));
       seterrorinfo ("proxy server broken, please check your server.\n");
-      inferior_ptid = null_ptid;
+      /* We can't assign inferior_ptid as null_ptid here, as if
+         when target resume return, gdb will notify other observers
+         using inferior_ptid->suspend.staop_signal. If inferior_ptid
+         is not found, gdb will assert failed.  */
+      /* inferior_ptid = null_ptid;  */
       return result;
     }
 
@@ -2033,7 +2086,7 @@ djp_singlestep ()
     {
       DJP_DEBUG_PRINTF ((" socket receive error.\n"));
       seterrorinfo ("proxy server broken, please check your server.\n");
-      inferior_ptid = null_ptid;
+      /* inferior_ptid = null_ptid;  */
       return result;
     }
 
@@ -2426,6 +2479,275 @@ djp_read_xmltdesc (ULONGEST offset, void *data,
   return TARGET_XFER_OK;
 }
 
+static int
+djp_set_contact (int event_in, int event_out)
+{
+  int result;
+  SetContactMPMsg msg;
+  SetContactMPRsp rsp;
+
+  DJP_DEBUG_PRINTF (("DBGCMD_SET_CONTACT.\n"));
+
+  msg.command = htonl (DBGCMD_SET_CONTACT);
+  msg.length = htonl (sizeof (msg) - 8);
+  msg.flag_out = htonl (event_out);
+  msg.flag_in = htonl (event_in);
+
+  result = socket_send (desc_fd, &msg, sizeof (msg));
+  if (result)
+    {
+      DJP_DEBUG_PRINTF ((" socket send error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  result = socket_receive (desc_fd, &rsp, sizeof (rsp));
+  if (result < 0)
+    {
+      DJP_DEBUG_PRINTF ((" socket receive error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  /* Do with rsp.status.  */
+  if (rsp.status)
+    {
+      DJP_DEBUG_PRINTF ((" djp status of response error.\n"));
+      return djp_do_error (ntohl (rsp.status));
+    }
+
+  return result;
+}
+
+static int
+djp_get_coreasthread (int qcore_type, int *lwp)
+{
+  GetCoreAsThreadMsg msg;
+  GetCoreAsThreadRsp rsp;
+  int result;
+
+  DJP_DEBUG_PRINTF (("DBGCMD_THREAD_QCORE.\n"));
+
+  msg.command = htonl (DBGCMD_THREAD_QCORE);
+  msg.length = htonl (sizeof (msg) - 8);
+  msg.type = htonl (qcore_type);
+
+  result = socket_send (desc_fd, &msg, sizeof (msg));
+  if (result)
+    {
+      DJP_DEBUG_PRINTF ((" socket send error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  result = socket_receive (desc_fd, &rsp, sizeof (rsp));
+  if (result < 0)
+    {
+      DJP_DEBUG_PRINTF ((" socket receive error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  /* Do with rsp.status.  */
+  if (rsp.status)
+    {
+      DJP_DEBUG_PRINTF ((" djp status of response error.\n"));
+      return djp_do_error (ntohl (rsp.status));
+    }
+
+  *lwp = ntohl (rsp.thread);
+
+  return result;
+}
+
+static int
+djp_check_threadalive (int lwp, int *alive_status)
+{
+  CheckThreadAliveMsg msg;
+  CheckThreadAliveRsp rsp;
+  int result;
+
+  DJP_DEBUG_PRINTF (("DBGCMD_CHECK_THREADALIVE.\n"));
+
+  msg.command = htonl (DBGCMD_CHECK_THREADALIVE);
+  msg.length = htonl (sizeof (msg) - 8);
+  msg.thread = htonl (lwp);
+
+  result = socket_send (desc_fd, &msg, sizeof (msg));
+  if (result)
+    {
+      DJP_DEBUG_PRINTF ((" socket send error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  result = socket_receive (desc_fd, &rsp, sizeof (rsp));
+  if (result < 0)
+    {
+      DJP_DEBUG_PRINTF ((" socket receive error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  /* Do with rsp.status.  */
+  if (rsp.status)
+    {
+      DJP_DEBUG_PRINTF ((" djp status of response error.\n"));
+      return djp_do_error (ntohl (rsp.status));
+    }
+
+  *alive_status = ntohl (rsp.thread_status);
+
+  return result;
+}
+
+static int
+djp_check_agent_mode (int *agent_mode)
+{
+  CheckAgentModeMsg msg;
+  CheckAgentModeRsp rsp;
+  int result;
+
+  DJP_DEBUG_PRINTF (("DBGCMD_CHECK_AGENT_MODE.\n"));
+
+  msg.command = htonl (DBGCMD_CHECK_AGENT_MODE);
+  msg.length = htonl (sizeof (msg) - 8);
+
+  result = socket_send (desc_fd, &msg, sizeof (msg));
+  if (result)
+    {
+      DJP_DEBUG_PRINTF ((" socket send error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  result = socket_receive (desc_fd, &rsp, sizeof (rsp));
+  if (result < 0)
+    {
+      DJP_DEBUG_PRINTF ((" socket receive error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  /* Do with rsp.status.  */
+  if (rsp.status)
+    {
+      DJP_DEBUG_PRINTF ((" djp status of response error.\n"));
+      return djp_do_error (ntohl (rsp.status));
+    }
+
+  *agent_mode = ntohl (rsp.mode);
+
+  return result;
+}
+
+static int
+djp_select_thread (struct ptid ptid)
+{
+  SelectMulticoreMsg msg;
+  SelectMulticoreRsp rsp;
+  int result;
+
+  DJP_DEBUG_PRINTF (("DBGCMD_SELECT_MULTICORE.\n"));
+
+  msg.command = htonl (DBGCMD_SELECT_MULTICORE);
+  msg.length = htonl (sizeof (msg) - 8);
+  msg.thread = htonl (ptid_get_lwp (ptid));
+
+  result = socket_send (desc_fd, &msg, sizeof (msg));
+  if (result)
+    {
+      DJP_DEBUG_PRINTF ((" socket send error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  result = socket_receive (desc_fd, &rsp, sizeof (rsp));
+  if (result < 0)
+    {
+      DJP_DEBUG_PRINTF ((" socket receive error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  /* Do with rsp.status.  */
+  if (rsp.status)
+    {
+      DJP_DEBUG_PRINTF ((" djp status of response error.\n"));
+      return djp_do_error (ntohl (rsp.status));
+    }
+
+  return result;
+}
+
+static int
+djp_get_thread_extra_info (int lwp, char *data)
+{
+  int result;
+  GetThreadExtraInfoMsg msg;
+  GetThreadExtraInfoRsp rsp;
+
+  DJP_DEBUG_PRINTF (("DBGCMD_GET_THREADEXTRAINFO, offset = 0x%x, len = %d.\n",
+                     offset, len));
+
+  msg.command = htonl (DBGCMD_GET_THREADEXTRAINFO);
+  msg.length = htonl (sizeof (msg)-8);
+  msg.thread = htonl (lwp);
+
+  result = socket_send (desc_fd, &msg, sizeof (msg));
+  if (result < 0)
+    {
+      DJP_DEBUG_PRINTF ((" socket send error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  /* Receive the header of response, the length of data[0] is 0.  */
+  result = socket_receive (desc_fd, &rsp, sizeof (rsp));
+  if (result < 0)
+    {
+      DJP_DEBUG_PRINTF ((" socket receive error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  rsp.rlen = ntohl (rsp.rlen);
+  if (rsp.rlen == 0)
+    return result;
+
+  result = socket_receive (desc_fd, data, rsp.rlen);
+  if (result < 0)
+    {
+      DJP_DEBUG_PRINTF ((" socket receive error.\n"));
+      seterrorinfo ("proxy server broken, please check your server.\n");
+      inferior_ptid = null_ptid;
+      return result;
+    }
+
+  /* Do with rsp.status.  */
+  if (rsp.status)
+    {
+      DJP_DEBUG_PRINTF ((" djp status of response error.\n"));
+      djp_do_error (ntohl (rsp.status));
+      return result;
+    }
+
+  return result;
+}
+
+
 /* ----------------------------------------------
             CSKY Hardware ops
    ----------------------------------------------  */
@@ -2800,172 +3122,96 @@ hardware_read_xmltdesc (ULONGEST offset, void *data,
   return TARGET_XFER_E_IO;
 }
 
-/* --------------------------------------------------
-  Abstract level for kernel operations
-  An array to include all the kernal ops.
-  An new kernel_ops should be registered here.
- ----------------------------------------------------  */
-
-struct kernel_ops* kernel_ops_array[] =
-{
-  /* The first member in the array would be NULL for the convenience of
-   function implementation in file: remote-csky.c.  */
-  NULL,
-  NULL
-};
-
-/* An array to include all the check function.
-   To check which kernel_ops in kernel_ops_array[] is
-   current_kernel_ops.  */
-
-int (*check_kernel_ops_fun_array[])(void) =
-{
-  NULL,
-  NULL,
-  NULL /* Must end with NULL.  */
-};
-
-static void kernel_init_thread_info (int intensity);
-static int  kernel_update_thread_info (ptid_t *inferior_ptid);
-static void kernel_fetch_registers (ptid_t ptid, int regno, unsigned int *val);
-static int  kernel_thread_alive (ptid_t ptid);
-static void kernel_pid_to_str (ptid_t ptid, char *buf);
-static void kernel_command_implement (char* args, int from_tty);
-static int  csky_choose_kernel_ops (enum kernel_ops_sel sel);
-static void csky_info_mthreads_command (char* args, int from_tty);
-static void csky_set_mthreads_mode_command (char* args, int from_tty,
-                                            struct cmd_list_element *c);
-
-static void
-kernel_init_thread_info (int intensity)
-{
-  if (current_kernel_ops)
-    {
-      return current_kernel_ops->to_init_thread_info (intensity);
-    }
-  return;
-}
-
 static int
-kernel_update_thread_info (ptid_t *inferior_ptid)
+hardware_set_contact (int event_in, int event_out)
 {
-  if (current_kernel_ops)
+  if ((proxy_main_ver > 1) || ((proxy_main_ver == 1) && proxy_sub_ver >= 9))
     {
-      return current_kernel_ops->to_update_thread_info (inferior_ptid);
-    }
-  return NO_KERNEL_OPS;
-}
-
-static void
-kernel_fetch_registers (ptid_t ptid, int regno, unsigned int *val)
-{
-  if (current_kernel_ops)
-    {
-      return current_kernel_ops->to_fetch_registers (ptid, regno, val);
-    }
-  return;
-}
-
-static int
-kernel_thread_alive (ptid_t ptid)
-{
-  if (current_kernel_ops)
-    {
-      return current_kernel_ops->to_thread_alive (ptid);
-    }
-  return 0;
-}
-
-static void
-kernel_pid_to_str (ptid_t ptid, char* buf)
-{
-  if (current_kernel_ops)
-    {
-      return current_kernel_ops->to_pid_to_str (ptid, buf);
-    }
-  return ;
-}
-
-static void
-kernel_command_implement (char* args, int from_tty)
-{
-  if (current_kernel_ops)
-    {
-      return current_kernel_ops->to_command_implement (args, from_tty);
-    }
-  return;
-}
-
-/* Choose a kernel_ops, defined in file: csky-kernel.h
-   Function to check in check_kernel_ops_fun_array[i] 
-                             is implemented by user-defined.
-   SEL : DEFAULT -->  choose kernel_ops automatically.
-        ECOS    -->  choose eCos_kernel_ops manually.
-   return : 1 -> success
-            0 -> failure.  */
-
-static int
-csky_choose_kernel_ops (enum kernel_ops_sel sel)
-{
-  if (sel == DEFAULT)
-    {
-      int i;
-      for (i = 1; check_kernel_ops_fun_array[i]; i++)
+      if (!current_hardware_ops)
         {
-          if ((check_kernel_ops_fun_array[i]) ())
-            {
-              /* Kernel_ops have been choose automatically.  */
-              current_kernel_ops = kernel_ops_array[i];
-              break;
-            }
+          seterrorinfo ("internal error: without hardware ops for target ops.");
+          return -1;
         }
-      return 1;
+      return current_hardware_ops->to_set_contact (event_in, event_out);
     }
-  else if (sel == ECOS)
-    {
-      /* kernel_ops_array[ECOS] == eCos_kernel_ops.  */
-      if (check_kernel_ops_fun_array[ECOS] ())
-        {
-          current_kernel_ops = kernel_ops_array[ECOS];
-          return 1;
-        }
-    }
-
-  return 0;
+  return -1;
 }
 
-/* Csky multi-threads commands.
-   If no current_kernel_ops, this commands will do nothing
-   except warning(). This is only an interface function which
-   is implemented by current_kernel_ops.
-   ARGS: parameter of commands
-   FROM_TTY: 1: command from CLI
-             0: command from MI  */
-
-static void
-csky_info_mthreads_command (char* args, int from_tty)
+static int
+hardware_get_coreasthread (int qcore_type, int *lwp)
 {
-  if (current_kernel_ops)
+  if ((proxy_main_ver > 1) || ((proxy_main_ver == 1) && proxy_sub_ver >= 9))
     {
-      current_kernel_ops->to_command_implement (args, from_tty);
-      return;
+      if (!current_hardware_ops)
+        {
+          seterrorinfo ("internal error: without hardware ops for target ops.");
+          return -1;
+        }
+      return current_hardware_ops->to_get_coreasthread (qcore_type, lwp);
     }
-  else if (from_tty)
+  return -1;
+}
+
+
+static int
+hardware_check_threadalive (int lwp, int *alive_status)
+{
+  if ((proxy_main_ver > 1) || ((proxy_main_ver == 1) && proxy_sub_ver >= 9))
     {
-      printf_filtered ("\"info mthreads\" is a multi-threads' command,"
-                       " and not support in single thread debugging.\nTry"
-                       " \"help info mthreads\" for more information.\n");
-      return;
+      if (!current_hardware_ops)
+        {
+          seterrorinfo ("internal error: without hardware ops for target ops.");
+          return -1;
+        }
+      return current_hardware_ops->to_check_threadalive (lwp, alive_status);
     }
-  else /* Info thread command from MI command.  */
+  return -1;
+}
+
+static int
+hardware_check_agent_mode (int *agent_mode)
+{
+  if ((proxy_main_ver > 1) || ((proxy_main_ver == 1) && proxy_sub_ver >= 9))
     {
-      struct cleanup *cleanup_error;
-      cleanup_error =
-            make_cleanup_ui_out_tuple_begin_end (current_uiout, "mthreadError");
-      ui_out_field_string (current_uiout, "error", "1");
-      do_cleanups (cleanup_error);
-      return;
+      if (!current_hardware_ops)
+        {
+          seterrorinfo ("internal error: without hardware ops for target ops.");
+          return -1;
+        }
+      return current_hardware_ops->to_check_agent_mode (agent_mode);
     }
+  return -1;
+}
+
+static int
+hardware_select_thread (struct ptid ptid)
+{
+  if ((proxy_main_ver > 1) || ((proxy_main_ver == 1) && proxy_sub_ver >= 9))
+    {
+      if (!current_hardware_ops)
+        {
+          seterrorinfo ("internal error: without hardware ops for target ops.");
+          return -1;
+        }
+      return current_hardware_ops->to_select_thread (ptid);
+    }
+  return -1;
+}
+
+
+static int
+hardware_get_thread_extra_info (int lwp, char *data)
+{
+  if ((proxy_main_ver > 1) || ((proxy_main_ver == 1) && proxy_sub_ver >= 9))
+    {
+      if (!current_hardware_ops)
+        {
+          seterrorinfo ("internal error: without hardware ops for target ops.");
+          return -1;
+        }
+      return current_hardware_ops->to_get_thread_extra_info (lwp, data);
+    }
+  return -1;
 }
 
 
@@ -2979,7 +3225,8 @@ static struct target_ops csky_ops;
 
 static void csky_open  (const char *name, int from_tty);
 static void csky_close (struct target_ops *ops);
-
+static void csky_attach (struct target_ops *ops,
+                         const char * args, int from_tty);
 static void csky_detach (struct target_ops *ops,
                          const char *args, int from_tty);
 static void csky_resume (struct target_ops *ops,
@@ -3116,6 +3363,27 @@ csky_target_ops_prepare (const char *name, int from_tty)
       error ("Target version: Unknown. CKcore Debug Server 3.0 or newer"
              " version needed.\n");
     }
+
+  /* Add check for multicore_thread agent_mode. Supporting ck860mp, proxy_layer
+     version should >= 1.9  */
+  if ((proxy_main_ver > 1)
+       || ((proxy_main_ver == 1) && (proxy_sub_ver >= 9)))
+    {
+      int agent_mode = 0;
+      if (hardware_check_agent_mode (&agent_mode))
+        {
+          csky_close (current_ops);
+          error ("Fail to get agent mode.");
+        }
+      if (agent_mode == 1)
+        csky_agent_multicore_thread = 1;
+      else
+        csky_agent_multicore_thread = 0;
+    }
+  else
+    {
+      csky_agent_multicore_thread = 0;
+    }
   pctrace = csky_pctrace;
   hardware_version = version[0];
 }
@@ -3131,6 +3399,7 @@ static void
 csky_init_gdb_state (void)
 {
   struct thread_info *thread;
+
   init_thread_list ();
   inferior_appeared (current_inferior (), ptid_get_pid (remote_csky_ptid));
 
@@ -3147,6 +3416,7 @@ csky_init_gdb_state (void)
 
   already_load = 0;
 }
+
 
 static void
 csky_get_hw_breakpoint_num (void)
@@ -3167,6 +3437,26 @@ csky_get_hw_breakpoint_num (void)
 }
 
 static void
+csky_get_hw_breakpoint_num_mp (void)
+{
+  struct thread_info *tp;
+  unsigned int hw_bkpt_num = 0;
+  unsigned int watchpoint_num = 0;
+
+  for (tp = thread_list; tp; tp = tp->next)
+    {
+      csky_set_thread_multicore (tp->ptid);
+      if (hardware_hw_bkpt_num (&hw_bkpt_num,&watchpoint_num) < 0)
+        {
+          error (errorinfo ());
+        }
+      max_hw_breakpoint_num[ptid_get_lwp (tp->ptid) - 1] = hw_bkpt_num;
+      max_watchpoint_num[ptid_get_lwp (tp->ptid) - 1] = watchpoint_num;
+    }
+  csky_set_thread_multicore (inferior_ptid);
+}
+
+static void
 csky_get_hw_breakpoint_num_new (void)
 {
   unsigned int hw_bkpt_num = 0;
@@ -3175,8 +3465,8 @@ csky_get_hw_breakpoint_num_new (void)
     {
       error (errorinfo ());
     }
-  max_hw_breakpoint_num = hw_bkpt_num;
-  max_watchpoint_num = watchpoint_num;
+  max_hw_breakpoint_num[0] = hw_bkpt_num;
+  max_watchpoint_num[0] = watchpoint_num;
   return;
 }
 
@@ -3186,7 +3476,7 @@ csky_get_hw_breakpoint_num_mid (void)
   unsigned int val = 0; /* For bkpt num.  */
   unsigned int hcr_reg, tmp,test_reg;
   test_reg = 0x8c0; /* Write the RCB&BCB of HCR to test if bkpt_B exist.  */
-  max_watchpoint_num = CSKY_MAX_WATCHPOINT;
+  max_watchpoint_num[0] = CSKY_MAX_WATCHPOINT;
   csky_fetch_had_registers (HID, &val);
   val &= BKPT_NUM_MASK;
   val >>= 12;   /* Get bkpt_num.  */
@@ -3198,21 +3488,21 @@ csky_get_hw_breakpoint_num_mid (void)
       csky_fetch_had_registers (HCR, &tmp);
       if (tmp == test_reg) /* Hwbkpt B exist.  */
         {
-          max_hw_breakpoint_num = CSKY_MAX_WATCHPOINT;
+          max_hw_breakpoint_num[0] = CSKY_MAX_WATCHPOINT;
         }
       else  /* Hwbkpt B doesn't exist , only hwbkpt A.  */
         {
-          max_hw_breakpoint_num = CSKY_MAX_HW_BREAKPOINT_WATCHPOINT_803;
+          max_hw_breakpoint_num[0] = CSKY_MAX_HW_BREAKPOINT_WATCHPOINT_803;
         }
       csky_store_had_registers (HCR, hcr_reg); /* Restore hcr.  */
     }
   else
     {
-      max_hw_breakpoint_num = val;
+      max_hw_breakpoint_num[0] = val;
     }
-  if (max_hw_breakpoint_num <  CSKY_MAX_WATCHPOINT)
+  if (max_hw_breakpoint_num[0] <  CSKY_MAX_WATCHPOINT)
     {
-      max_watchpoint_num = max_hw_breakpoint_num;
+      max_watchpoint_num[0] = max_hw_breakpoint_num[0];
     }
 }
 
@@ -3222,42 +3512,87 @@ csky_get_hw_breakpoint_num_old (void)
   int mach = gdbarch_tdep (get_current_arch ())->mach;
   if ((mach == CSKY_ARCH_803) || (mach == CSKY_ARCH_802))
     {
-      max_hw_breakpoint_num = CSKY_MAX_HW_BREAKPOINT_WATCHPOINT_803;
+      max_hw_breakpoint_num[0] = CSKY_MAX_HW_BREAKPOINT_WATCHPOINT_803;
     }
   else
     {
-      max_hw_breakpoint_num = CSKY_MAX_WATCHPOINT;
+      max_hw_breakpoint_num[0] = CSKY_MAX_WATCHPOINT;
     }
-  max_watchpoint_num = max_hw_breakpoint_num;
+  max_watchpoint_num[0] = max_hw_breakpoint_num[0];
 }
 
 static void
 csky_open (const char *name, int from_tty)
 {
+  csky_connecting_flag = 1;
   csky_target_ops_prepare (name, from_tty);
 
-  /* Push target into stack, ?? current_ops maybe xxx_ops ???  */
-  current_ops = &csky_ops;
+  if (is_rtos_ops ())
+    csky_rtos_ops_flag = 1;
+  else
+    csky_rtos_ops_flag = 0;
+
+  /* Init is_rtos_ops.  */
+  clear_is_rtos_ops ();
+
+  /* Avoid when target jtag after target rtos the rtos_des
+     and event_des are not NULL.  */
+  if (!csky_rtos_ops_flag || csky_should_use_multicore_functions ())
+    {
+      rtos_ops.rtos_des = NULL;
+      rtos_ops.event_des = NULL;
+      rtos_ops.current_ops = &csky_ops;
+    }
+  current_ops = rtos_ops.current_ops;
   push_target (current_ops);
 
-  /* Delete current_kernel_ops.  */
-  current_kernel_ops = NULL;
-  csky_init_gdb_state ();
-  /* Get the hw_breakpoint_num of target.  */
-  csky_get_hw_breakpoint_num ();
+  target_find_description ();
+
+  if (!csky_should_use_multicore_functions ())
+    {
+      rtos_ops.to_open (rtos_ops.current_ops, rtos_ops.rtos_des);
+
+      csky_init_gdb_state ();
+      /* Get the hw_breakpoint_num of target.  */
+      csky_get_hw_breakpoint_num ();
+    }
+  else
+    {
+      struct thread_info *thread;
+      struct inferior *inf;
+
+      inf = current_inferior ();
+      inferior_appeared (inf, ptid_get_pid (remote_csky_ptid));
+      inf->fake_pid_p = 1;
+
+      target_update_thread_list ();
+
+      inferior_ptid = thread_list->ptid;
+      csky_set_thread_multicore (inferior_ptid);
+
+      /* FIXME: ????  */
+      thread = inferior_thread ();
+      set_last_target_status (inferior_ptid, thread->suspend.waitstatus);
+      /* Get the hw_breakpoint_num of target.  */
+      csky_get_hw_breakpoint_num_mp ();
+      already_load = 0;
+      csky_connecting_flag = 0;
+      init_wait_for_inferior ();
+      start_remote (from_tty);
+    }
 }
 
 static void
 csky_close (struct target_ops *ops)
 {
-  TARGET_DEBUG_PRINTF(("csky_close.\n"));
 
   /* Close the hardware ops. */
   hardware_close ();
   generic_mourn_inferior ();
 
   /* Initial thread_list in multi-threads module totally.  */
-  kernel_init_thread_info(1);
+  if (!csky_should_use_multicore_functions ())
+    rtos_ops.to_close(rtos_ops.current_ops, rtos_ops.rtos_des);
   pctrace = NULL;
 }
 
@@ -3278,12 +3613,33 @@ csky_detach (struct target_ops *ops, const char *args, int from_tty)
 }
 
 static void
+csky_attach (struct target_ops *ops, const char * args, int from_tty)
+{
+  int return_flag;
+  if (args)
+    {
+      warning ("csky attach command ignore all prameters.\n");
+    }
+  /* csky attach do nothing, in rtos debugging,
+     substitude with rtos_attach ().  */
+}
+
+static void
 csky_resume (struct target_ops *ops,
              ptid_t pid, int step,
              enum gdb_signal siggnal)
 {
   int result;
+
   TARGET_DEBUG_PRINTF (("csky_resume: step = %d.\n", step));
+  if (!csky_should_use_multicore_functions ())
+    rtos_ops.to_prepare_resume (rtos_ops.rtos_des, pid, step);
+  else
+    {
+      csky_set_thread_multicore (inferior_ptid);
+      if (ptid_equal (pid, inferior_ptid) && step)
+        hardware_set_contact (MP_EVENT_IN_ALL, MP_EVENT_OUT_NULL);
+    }
   /* Check the cpu status.  */
   if (step) /* For single step.  */
     {
@@ -3295,6 +3651,19 @@ csky_resume (struct target_ops *ops,
       resume_stepped = 0;
       result = hardware_exit_debugmode ();
     }
+
+  if (csky_should_use_multicore_functions ()
+      && ptid_equal (pid, inferior_ptid)
+      && step)
+    {
+      csky_set_thread_multicore (inferior_ptid);
+      hardware_set_contact (MP_EVENT_IN_ALL, MP_EVENT_OUT_ALL);
+      resume_stepped_for_continue = 0;
+    }
+  else if (step)
+     resume_stepped_for_continue = 1;
+  else
+     resume_stepped_for_continue = 0;
 
   already_load = 0;
   if (result < 0)
@@ -3999,74 +4368,114 @@ csky_get_current_hw_address ()
 
               /* Analyze previous insn.  */
 #ifndef CSKYGDB_CONFIG_ABIV2
-             csky_get_pre_st_ld_info_v1 (insn, insn_version,
-                                         &st_ld_len, &st_ld_addr,
-                                         &is_st_ld);
+              csky_get_pre_st_ld_info_v1 (insn, insn_version,
+                                          &st_ld_len, &st_ld_addr,
+                                          &is_st_ld);
 #else /* CSKYGDB_CONFIG_ABIV2 */
-             csky_get_pre_st_ld_info_v2 (insn, insn_version,
-                                         &st_ld_len, &st_ld_addr,
-                                         &is_st_ld);
+              csky_get_pre_st_ld_info_v2 (insn, insn_version,
+                                          &st_ld_len, &st_ld_addr,
+                                          &is_st_ld);
 #endif /* CSKYGDB_CONFIG_ABIV2 */
-        /* Check the address, judge whether a valid watchpoint or not.  */
-        if ((is_st_ld == 1
-              && (b->type == bp_hardware_watchpoint
-                  || b->type == bp_access_watchpoint))
-            || (is_st_ld == 2
-                 && (b->type == bp_read_watchpoint
-                     || b->type == bp_access_watchpoint)))
-          {
-            if (((b->loc->address >= st_ld_addr)
-                  && (b->loc->address < (st_ld_addr + st_ld_len)))
-                || (((b->loc->address +  b->loc->length) > st_ld_addr)
-                     && ((b->loc->address +  b->loc->length)
-                          <= (st_ld_addr + st_ld_len))))
-              {
-                /* Is valid hw addr.  */
-                is_current_insn = 0; /* Previous insn lead to break.  */
-                break;
-              }
-          }
-        /* Previous insn is not valid addr,
-           we begin to chech the current insn.  */
-        is_st_ld = 0;
-        insn = get_pre_cur_insn (insn_version, 0);
-        /* Analyze current insn.  */
-#ifndef CSKYGDB_CONFIG_ABIV2
-        csky_get_cur_st_ld_info_v1 (insn, insn_version,
-                                    &st_ld_len, &st_ld_addr,
-                                    &is_st_ld);
-#else  /* CSKYGDB_CONFIG_ABIV2 */
-        csky_get_cur_st_ld_info_v2 (insn, insn_version,
-                                    &st_ld_len, &st_ld_addr,
-                                    &is_st_ld);
+              /* Check the address, judge whether a valid
+                 watchpoint or not.  */
+              if ((is_st_ld == 1
+                    && (b->type == bp_hardware_watchpoint
+                   || b->type == bp_access_watchpoint))
+                   || (is_st_ld == 2
+                       && (b->type == bp_read_watchpoint
+                   || b->type == bp_access_watchpoint)))
+                {
+                  if (((b->loc->address >= st_ld_addr)
+                      && (b->loc->address < (st_ld_addr + st_ld_len)))
+                      || (((b->loc->address +  b->loc->length) > st_ld_addr)
+                         && ((b->loc->address +  b->loc->length)
+                              <= (st_ld_addr + st_ld_len))))
+                    {
+                      /* Is valid hw addr.  */
+                      is_current_insn = 0; /* Previous insn lead to break.  */
+                      break;
+                    }
+                }
+#ifdef CSKYGDB_CONFIG_ABIV2
+              /* When get here, it means the prev insn is not a ld or st.
+                 But there may be a case: insn is 32 bit, but it is consist
+                 of a prev 16 bit insn and a half of prev 32 bit insn of the
+                 prev insn. Example:
+                 e3ffffa5   bsr    0x1fc1502c
+                 b400       st.w   r0, (r4, 0x0)
+                 We got insn 0xffa5b400 as a 32 bit insn, but the right
+                 answer is just b400.  */
+              if ((insn & 0xc0000000) == 0xc0000000)
+                {
+                  csky_get_pre_st_ld_info_v2 ((insn << 16),
+                                              insn_version,
+                                              &st_ld_len,
+                                              &st_ld_addr,
+                                              &is_st_ld);
+                  if ((is_st_ld == 1
+                        && (b->type == bp_hardware_watchpoint
+                      || b->type == bp_access_watchpoint))
+                      || (is_st_ld == 2
+                          && (b->type == bp_read_watchpoint
+                      || b->type == bp_access_watchpoint)))
+                    {
+                      if (((b->loc->address >= st_ld_addr)
+                           && (b->loc->address < (st_ld_addr + st_ld_len)))
+                           || (((b->loc->address +  b->loc->length)
+                                 > st_ld_addr)
+                               && ((b->loc->address +  b->loc->length)
+                                    <= (st_ld_addr + st_ld_len))))
+                        {
+                          /* Is valid hw addr.  */
+                          /* Previous insn lead to break.  */
+                          is_current_insn = 0;
+                          break;
+                        }
+                    }
+                }
 #endif /* CSKYGDB_CONFIG_ABIV2 */
 
-        /* Check the addr, judge whether a valid watchpoint or not.  */
-        if ((is_st_ld == 1
-             && (b->type == bp_hardware_watchpoint
-                 || b->type == bp_access_watchpoint))
-            || (is_st_ld == 2
-                && (b->type == bp_read_watchpoint
-                    || b->type == bp_access_watchpoint)))
-          {
-            /* Check the address in location of b.  */
-            if (((b->loc->address >= st_ld_addr)
-                  && (b->loc->address < (st_ld_addr + st_ld_len)))
-                || (((b->loc->address +  b->loc->length) > st_ld_addr)
-                    && ((b->loc->address +  b->loc->length)
-                         <= (st_ld_addr + st_ld_len))))
-              {
-                /* Is valid hw address.  */
-                is_current_insn = 1; /* Current insn lead to break.  */
-                break;
-              }
-          }
-        is_st_ld = 0;
-        /* End of insn analyze for one watchpoint in breakpoint chain,
-           go to next watchpoint.  */
-      }
+              /* Previous insn is not valid addr,
+                 begin to check the current insn.  */
+              is_st_ld = 0;
+              insn = get_pre_cur_insn (insn_version, 0);
+              /* Analyze current insn.  */
+#ifndef CSKYGDB_CONFIG_ABIV2
+              csky_get_cur_st_ld_info_v1 (insn, insn_version,
+                                          &st_ld_len, &st_ld_addr,
+                                          &is_st_ld);
+#else  /* CSKYGDB_CONFIG_ABIV2 */
+              csky_get_cur_st_ld_info_v2 (insn, insn_version,
+                                          &st_ld_len, &st_ld_addr,
+                                          &is_st_ld);
+#endif /* CSKYGDB_CONFIG_ABIV2 */
+
+              /* Check the addr, judge whether a valid watchpoint or not.  */
+              if ((is_st_ld == 1
+                   && (b->type == bp_hardware_watchpoint
+                       || b->type == bp_access_watchpoint))
+                  || (is_st_ld == 2
+                      && (b->type == bp_read_watchpoint
+                          || b->type == bp_access_watchpoint)))
+                {
+                  /* Check the address in location of b.  */
+                  if (((b->loc->address >= st_ld_addr)
+                        && (b->loc->address < (st_ld_addr + st_ld_len)))
+                      || (((b->loc->address +  b->loc->length) > st_ld_addr)
+                          && ((b->loc->address +  b->loc->length)
+                               <= (st_ld_addr + st_ld_len))))
+                    {
+                      /* Is valid hw address.  */
+                      is_current_insn = 1; /* Current insn lead to break.  */
+                      break;
+                    }
+                }
+              is_st_ld = 0;
+              /* End of insn analyze for one watchpoint in breakpoint chain,
+                 go to next watchpoint.  */
+            }
+        }
     }
-  }
 
   if (is_st_ld)
     {
@@ -4082,11 +4491,13 @@ csky_get_current_hw_address ()
 
   return 0;
 }
+
 static ptid_t
 csky_wait (struct target_ops *ops, ptid_t ptid,
            struct target_waitstatus *status, int options)
 {
   int cpu_status;
+  struct thread_info *tp;
   TARGET_DEBUG_PRINTF (("csky_wait.\n"));
 
   interrupt_count = 0;
@@ -4094,9 +4505,28 @@ csky_wait (struct target_ops *ops, ptid_t ptid,
   /* Set new signal handler.  */
   ofunc =  signal (SIGINT, csky_interrupt);
 
+  /* Init tp to find_thread_ptid (inferior_ptid). When multicore_threads
+     debugging, loop quarying to get the first core who has entered
+     debug mode that is not by HSR_PR.  */
+  tp = find_thread_ptid (inferior_ptid);
+  if (!tp)
+    {
+      error ("Can't find current thread info.");
+    }
+
   do
     {
-      if (interrupt_count)
+      if (csky_should_use_multicore_functions ()
+          && !(resume_stepped ^ resume_stepped_for_continue))
+        {
+          csky_set_thread_multicore (tp->ptid);
+          /* If tp->ptid is the ptid to return, tp->ptid != inferior_ptid,
+             tp->ptid met a hw/watch point, then csky_get_current_hw_address
+             will get the insn of inferior_ptid which tp->ptid is the right
+             answer.  */
+          inferior_ptid = tp->ptid;
+        }
+      if (interrupt_count || csky_get_ctrlc)
         {
           int ret = hardware_enter_debugmode ();
           if (ret == JTAG_NON_DEBUG_REGION)
@@ -4114,14 +4544,73 @@ csky_wait (struct target_ops *ops, ptid_t ptid,
         }
 
       usleep (10);
-     if (hardware_check_debugmode (&cpu_status) < 0)
-       {
-         /* Connection broken.  */
-         inferior_ptid = null_ptid;
-         error ("the proxy server was broken.\n");
-       }
+      if (hardware_check_debugmode (&cpu_status) < 0)
+        {
+          /* Connection broken.  */
+          inferior_ptid = null_ptid;
+          error ("the proxy server was broken.\n");
+        }
+      if (csky_should_use_multicore_functions ()
+          && !(resume_stepped ^ resume_stepped_for_continue))
+        {
+          if (cpu_status && !HSR_PR_TRUE(cpu_status))
+            break;
+          cpu_status = 0;
+          tp = tp->next;
+          if (!tp)
+            tp = thread_list;
+        }
     }
   while (!cpu_status);  /* When debugmode status == 0.  */
+
+  /* Here, csky_resume inferior_ptid for singlestep, but it
+     can be interruptted by other ptid who is halted by bkpt.  */
+  if (csky_should_use_multicore_functions ()
+      && resume_stepped && resume_stepped_for_continue)
+    {
+      if (cpu_status & 0x20)
+        {
+          /* We have found a CPU is in debug-mode because of si,
+             here,  */
+          int status = 0;
+          int thread_count = 0;
+          ptid_t si_ptid = tp->ptid;
+          while (thread_count < CSKY_MULTICORE_MAX)
+            {
+              tp = tp->next;
+              if (!tp)
+                tp = thread_list;
+              if (ptid_equal (tp->ptid, si_ptid))
+                {
+                  thread_count ++;
+                  continue;
+                }
+              csky_set_thread_multicore (tp->ptid);
+              if (hardware_check_debugmode (&status) < 0)
+                {
+                  /* Connection broken.  */
+                  inferior_ptid = null_ptid;
+                  error ("the proxy server was broken.\n");
+                }
+              /* An other CPU is in debug mode, it is in debug-mode and
+                 the cause is not TO or PRO.  */
+              if (status && !(status & 0x20) && !(status & 0x10000))
+                {
+                  cpu_status = status;
+                  break;
+                }
+              thread_count ++;
+            }
+          if (thread_count == CSKY_MULTICORE_MAX)
+            tp = find_thread_ptid (si_ptid);
+          else
+            /* If tp->ptid is the ptid to return, tp->ptid != inferior_ptid,
+               tp->ptid met a hw/watch point, then csky_get_current_hw_address
+               will get the insn of inferior_ptid which tp->ptid is the right
+               answer.  */
+            inferior_ptid = tp->ptid;
+        }
+    }
 
   if (check_quit_flag ())
     sleep (1);
@@ -4137,17 +4626,24 @@ csky_wait (struct target_ops *ops, ptid_t ptid,
   status->kind = TARGET_WAITKIND_STOPPED;
   status->value.sig = GDB_SIGNAL_TRAP;
 
-  if (cpu_status & 0x080)    /* hw/wp.  */
+  /* Ctrl + c, dro, hdro, edro.  */
+  /* If just considering dro, hdro and edro, the case doing a  Ctrl + C on
+     on the "next" command on "bkpt" or "br itself" will be missed.  */
+  /* Ctrl+c should be cared about before hw/wp, as multicore_threads,
+     a hw/wp happened on anther thread's bkpt, gdb always ignore it and run.
+     When got ctrl+c, it will be ignored, and gdb will not stop.  */
+  if (csky_get_ctrlc
+      || ((cpu_status & 0x700) && ((cpu_status & 0x20) != 0x20)) )
+    {
+      csky_get_ctrlc = 0;
+      status->value.sig = GDB_SIGNAL_INT;
+    }
+  else if (cpu_status & 0x080)    /* hw/wp.  */
     {
       /* FIXME :  when enable it, watchpoint can work fine
                   but hbreak cannot stop
          NOTE: hit_watchpoint will be set in csky_get_current_hw_address.  */
       hit_watchpoint_addr = csky_get_current_hw_address ();
-    }
-  /* Ctrl + c, dro, hdro, edro.  */
-  else if((cpu_status & 0x700) && ((cpu_status & 0x20) != 0x20))
-    {
-      status->value.sig = GDB_SIGNAL_INT;
     }
   else if (cpu_status & 0x040)    /* swo, bkpt.  */
     {
@@ -4156,10 +4652,25 @@ csky_wait (struct target_ops *ops, ptid_t ptid,
     {
     }
 
+  csky_get_ctrlc = 0;
 
-  kernel_update_thread_info(&inferior_ptid);
+  if (resume_stepped && !resume_stepped_for_continue)
+    return inferior_ptid;
 
-  return inferior_ptid;
+  if (!csky_should_use_multicore_functions ())
+    {
+      if (rtos_ops.rtos_des != NULL)
+        rtos_ops.to_update_task_info (rtos_ops.current_ops,
+                                      rtos_ops.rtos_des, &inferior_ptid);
+      if (rtos_ops.event_des!= NULL)
+        rtos_ops.to_update_event_info (rtos_ops.current_ops,
+                                       rtos_ops.event_des);
+      return inferior_ptid;
+    }
+  else
+    {
+      return tp->ptid;
+    }
 }
 
 
@@ -4191,7 +4702,6 @@ csky_store_had_registers(HADREG regno, unsigned int val)
 
 }
 /* ----------------- End for operate HAD register ---------------  */
-
 static void
 csky_fetch_registers (struct target_ops *ops,
                       struct regcache *regcache, int regno)
@@ -4199,7 +4709,6 @@ csky_fetch_registers (struct target_ops *ops,
   unsigned int val;
   int i;
   int csky_total_regnum;
-  ptid_t current_thread_ptid;
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
 
@@ -4208,20 +4717,20 @@ csky_fetch_registers (struct target_ops *ops,
       error ("internal error, invalid register number");
     }
 
+  if (csky_should_use_multicore_functions ())
+    csky_set_thread_multicore (inferior_ptid);
   TARGET_DEBUG_PRINTF (("csky_fetch_registers: regno = %d,", regno));
   /* In multi-threads' condition,if context is
      not the current_context of the csky-target,
      GDB cann't fetch the register.So,here a dummy
      way can solve the problem. */
-  /* FIXME: use inferior_ptid ???
-  current_thread_ptid = get_ptid_regcache (regcache);  */
-  current_thread_ptid = inferior_ptid;   /* FIXME:??  */
-  if ((current_kernel_ops != NULL)
-      && !ptid_equal (current_kernel_ops->csky_target_ptid,
-                      current_thread_ptid))
+  if (!csky_should_use_multicore_functions ()
+      && rtos_ops.is_regnum_in_task_list (rtos_ops.rtos_des,
+                                          inferior_ptid,
+                                          regno))
     {
-       current_kernel_ops->to_fetch_registers (current_thread_ptid,
-                                               regno, &val);
+      rtos_ops.to_fetch_registers (rtos_ops.rtos_des,
+                                   inferior_ptid, regno, &val);
     }
   else
     {
@@ -4289,12 +4798,14 @@ csky_store_registers (struct target_ops *ops,
   int serverReg_nr;
   int csky_total_regnum;
   ULONGEST regval;
-  ptid_t current_thread_ptid;
   struct gdbarch *gdbarch = get_regcache_arch (regcache);
   if (regno == -1)
     {
       error ("internal error, invalid register number");
     }
+
+  if (csky_should_use_multicore_functions ())
+    csky_set_thread_multicore (inferior_ptid);
 
   serverReg_nr = csky_register_convert (regno, regcache);
 #ifndef CSKYGDB_CONFIG_ABIV2     /* FOR ABIV1 */
@@ -4340,16 +4851,14 @@ csky_store_registers (struct target_ops *ops,
 
   /* In multi-thread condition, if you want to change register value
      which is not belong to inferior_ptid, csky-elf-gdb will do nothing.  */
-  /*  FIXME: how to get ptid, use inferior_ptid or write function
-             get_ptid_regcache()
-  current_thread_ptid = get_ptid_regcache (regcache);  */
-  current_thread_ptid = inferior_ptid; /* FIXME:??  */
-  if ((current_kernel_ops != NULL)
-      && !ptid_equal (current_kernel_ops->csky_target_ptid,
-                      current_thread_ptid))
+  if (!csky_should_use_multicore_functions ()
+      &&  rtos_ops.is_regnum_in_task_list (rtos_ops.rtos_des,
+                                           inferior_ptid,
+                                           regno))
     {
-      current_kernel_ops->to_store_registers (current_thread_ptid,
-                                              regno, regval);
+      rtos_ops.to_store_registers (rtos_ops.rtos_des,
+                                   inferior_ptid,
+                                   regno, regval);
     }
   else
     {
@@ -4363,7 +4872,7 @@ csky_store_registers (struct target_ops *ops,
 static void
 csky_prepare_to_store (struct target_ops *ops, struct regcache *arg1)
 {
-  /* Do nothing or ??  */
+  /* Do nothing.  */
   return;
 }
 
@@ -4481,6 +4990,9 @@ csky_xfer_partial (struct target_ops *ops,
   if (download_write_size > len)
     partial_len = len;
 
+  if (csky_should_use_multicore_functions ())
+    csky_set_thread_multicore (inferior_ptid);
+
   if (object == TARGET_OBJECT_MEMORY)
     {
       LONGEST xfered;
@@ -4568,21 +5080,48 @@ csky_can_use_hardware_watchpoint (struct target_ops *self, enum bptype bp_type,
   int hwbreak = 0;
   int max_bkpt;
   unsigned int val = 0; /* For bkpt num.  */
+  int lwp = 1;
+  int hwwatch_adjust = 0;
+  int hwbreak_adjust = 0;
 
-  max_bkpt = max_hw_breakpoint_num;
+  if (csky_should_use_multicore_functions ())
+    lwp = ptid_get_lwp (inferior_ptid);
+
+  if (debug_in_rom)
+    {
+      max_bkpt = max_hw_breakpoint_num[lwp - 1] - 1;
+    }
+  else
+    {
+      max_bkpt = max_hw_breakpoint_num[lwp - 1];
+    }
   for (b = breakpoint_chain; b; b = b->next)
     {
       if (b->enable_state == bp_enabled)
         {
-          if (b->type == bp_hardware_watchpoint
-              || b->type == bp_read_watchpoint
-              || b->type == bp_access_watchpoint)
+          if ((b->type == bp_hardware_watchpoint
+               || b->type == bp_read_watchpoint
+               || b->type == bp_access_watchpoint)
+              && !b->loc->duplicate)
             {
               hwwatch++;
             }
-          else if (b->type == bp_hardware_breakpoint)
+          else if ((b->type == bp_hardware_watchpoint
+                    || b->type == bp_read_watchpoint
+                    || b->type == bp_access_watchpoint)
+                   && b->loc->duplicate)
+            {
+              hwwatch_adjust ++;
+            }
+          else if (b->type == bp_hardware_breakpoint
+                   && !b->loc->duplicate)
             {
               hwbreak++;
+            }
+          else if (b->type == bp_hardware_breakpoint
+                   && b->loc->duplicate)
+            {
+              hwbreak_adjust ++;
             }
         }
     }
@@ -4600,7 +5139,10 @@ csky_can_use_hardware_watchpoint (struct target_ops *self, enum bptype bp_type,
   /* For hbreak  */
   if (bp_type == bp_hardware_breakpoint)
     {
-      if ((hwwatch <= max_watchpoint_num)
+      /* Duplicate bkpts will not be inserted, means them
+         needn't hardware resources.  */
+      cnt -= hwbreak_adjust;
+      if ((hwwatch <= max_watchpoint_num[lwp - 1])
            && ((hwwatch + cnt) <= max_bkpt))
         {
           return 1;
@@ -4613,7 +5155,10 @@ csky_can_use_hardware_watchpoint (struct target_ops *self, enum bptype bp_type,
   /* For watchpoint.  */
   else
     {
-      if ((cnt <= max_watchpoint_num)
+      /* Duplicate bkpts will not be inserted, means them
+         needn't hardware resources.  */
+      cnt -= hwwatch_adjust;
+      if ((cnt <= max_watchpoint_num[lwp - 1])
           && ((hwbreak + cnt) <= max_bkpt))
         {
           return 1;
@@ -4632,7 +5177,8 @@ csky_insert_hw_breakpoint (struct target_ops *self,
 {
   TARGET_DEBUG_PRINTF (("csky_insert_hw_breakpoint: addr = 0x%x.\n",
                        (U32)bp_tgt->reqstd_address));
-
+  if (csky_should_use_multicore_functions ())
+    csky_set_thread_multicore (inferior_ptid);
   return hardware_insert_hw_breakpoint (bp_tgt->reqstd_address);
 }
 
@@ -4643,6 +5189,8 @@ csky_remove_hw_breakpoint (struct target_ops *self,
 {
   TARGET_DEBUG_PRINTF (("csky_remove_hw_breakpoint: addr = 0x%x.\n",
                        (U32)bp_tgt->reqstd_address));
+  if (csky_should_use_multicore_functions ())
+    csky_set_thread_multicore (inferior_ptid);
   return hardware_remove_hw_breakpoint (bp_tgt->reqstd_address);
 }
 
@@ -4659,6 +5207,8 @@ csky_insert_watchpoint (struct target_ops *self,
   TARGET_DEBUG_PRINTF (("csky_insert_watchpoint: addr = 0x%x, len = %d,"
                         " type = %d.\n",
                        (U32)addr, len, type));
+  if (csky_should_use_multicore_functions ())
+    csky_set_thread_multicore (inferior_ptid);
   return hardware_insert_watchpoint (addr, len, type, 0);
 }
 
@@ -4671,6 +5221,8 @@ csky_remove_watchpoint (struct target_ops *self,
   TARGET_DEBUG_PRINTF (("csky_remove_watchpoint: addr = 0x%x, len = %d,"
                        " type = %d.\n",
                       (U32)addr, len, type));
+  if (csky_should_use_multicore_functions ())
+    csky_set_thread_multicore (inferior_ptid);
   return hardware_remove_watchpoint (addr, len, type, 0);
 }
 
@@ -4766,7 +5318,12 @@ csky_load (struct target_ops *self, const char *args, int from_tty)
   {
     bfd *abfd;
     asection *s;
-    abfd = bfd_openr (args, 0);
+    char **argv;
+
+    argv = gdb_buildargv (args);
+    old_chain = make_cleanup_freeargv (argv);
+
+    abfd = bfd_openr (argv[0], 0);
     if (!abfd)
       {
         printf_filtered ("Unable to open file %s\n", args);
@@ -4822,11 +5379,17 @@ csky_load (struct target_ops *self, const char *args, int from_tty)
   download_total_size = 0;
 
   /* Finally, make the PC point at the start address.  */
-  if (current_kernel_ops)
+  /* Initialize thread_list in GDB.  */
+  if (!csky_should_use_multicore_functions ())
     {
-      /* Initialize thread_list in kernel_module.  */
-      current_kernel_ops->to_init_thread_info (0);
-      current_kernel_ops->csky_target_ptid = remote_csky_ptid;
+      if (rtos_ops.rtos_des)
+        {
+          rtos_ops.to_reset (rtos_ops.rtos_des);
+        }
+    }
+  else
+    {
+      target_update_thread_list ();
     }
 
   regcache = get_current_regcache ();
@@ -4843,7 +5406,6 @@ csky_load (struct target_ops *self, const char *args, int from_tty)
 
   if (old_chain != NULL)
     do_cleanups (old_chain);
-
 }
 
 
@@ -4890,15 +5452,24 @@ csky_create_inferior (struct target_ops *ops, char *execfile,
 static int
 csky_thread_alive (struct target_ops *ops, ptid_t ptid)
 {
+  if (csky_should_use_multicore_functions ())
+    return csky_thread_alive_multicore (ops, ptid);
+
   /* Function override from kernel_ops.  */
-  if (current_kernel_ops)
-    return current_kernel_ops->to_thread_alive (ptid);
-
-  if (ptid_equal (ptid, remote_csky_ptid))
-    /* The main task is always alive.  */
-    return 1;
-
-  return 0;
+  if (rtos_ops.rtos_des)
+    {
+      if (ptid_equal (ptid, remote_csky_ptid))
+        {
+          /*
+           * when elf debugging, main thread is always alive
+           * when rtos debugging, main thread is always unalive
+           */
+          if (rtos_ops.rtos_des)
+            return 0;
+          return 1;
+        }
+    }
+  return rtos_ops.is_task_in_task_list (rtos_ops.rtos_des, ptid);
 }
 
 /* Convert a thread ID to a string.  Returns the string in a static
@@ -4911,11 +5482,12 @@ csky_pid_to_str (struct target_ops *ops, ptid_t ptid)
 {
   static char buf[64];
   /* Function voerride from kernel_module.  */
-  if (current_kernel_ops
-      && !ptid_equal (current_kernel_ops->csky_target_ptid, remote_csky_ptid)
+  if (!csky_should_use_multicore_functions ()
+      && rtos_ops.rtos_des
+      && !ptid_equal (rtos_ops.target_ptid, remote_csky_ptid)
       && ptid.tid != 0)
     {
-      current_kernel_ops->to_pid_to_str (ptid, buf);
+      rtos_ops.to_pid_to_str (rtos_ops.rtos_des, ptid, buf);
       return buf;
     }
 
@@ -5001,11 +5573,8 @@ csky_reset_command (char *args, int from_tty)
     }
 
   /* Target have been reset. Now we should init kernel_ops.  */
-  kernel_init_thread_info (1);
-  if (current_kernel_ops)
-    {
-      current_kernel_ops->csky_target_ptid = remote_csky_ptid;
-    }
+  if (!csky_should_use_multicore_functions ())
+    rtos_ops.to_reset(rtos_ops.rtos_des);
 
   registers_changed ();
 
@@ -5063,6 +5632,10 @@ csky_pctrace_command (char *args, int from_tty)
       warning("pctrace is not supportted in current debug method.\n");
       return;
     }
+
+  if (csky_should_use_multicore_functions ())
+    csky_set_thread_multicore (inferior_ptid);
+
   /* Support both csky_pctrace and remote_pctrace for jtag
      and remote debug method.  */
   pctrace (args, pclist, &depth, from_tty);
@@ -5088,7 +5661,13 @@ csky_pctrace_command (char *args, int from_tty)
           if (sal.symtab && sal.symtab->filename)
             {
               ui_out_text (uiout, "()\tat ");
-              ui_out_field_string (uiout, "file", sal.symtab->filename);
+              if (interpreter_p != NULL
+                  && (interpreter_p[0] == 'm'
+                      && interpreter_p[1] == 'i')
+                  && sal.symtab->fullname)
+                ui_out_field_string (uiout, "file", sal.symtab->fullname);
+              else
+                ui_out_field_string (uiout, "file", sal.symtab->filename);
               ui_out_text (uiout, ":");
               ui_out_field_int (uiout, "line", sal.line);
             }
@@ -5191,11 +5770,8 @@ csky_soft_reset_command (char *args, int from_tty)
     }
 
   /* Target have been reset. Now we should init kernel_ops.  */
-  kernel_init_thread_info (1);
-  if (current_kernel_ops)
-    {
-      current_kernel_ops->csky_target_ptid = remote_csky_ptid;
-    }
+  if (!csky_should_use_multicore_functions ())
+    rtos_ops.to_reset (rtos_ops.rtos_des);
 
   registers_changed ();
 
@@ -5222,12 +5798,6 @@ csky_pctrace (char *args, U32 *pclist, int *depth, int from_tty)
   int result;
   int i;
   int mach = gdbarch_tdep (get_current_arch ())->mach;
-  if ((mach == CSKY_ARCH_803) || (mach == CSKY_ARCH_802))
-    {
-      warning ("CK803 & CK802 does not support pctrace function.");
-      *depth = -1;
-      return 0;
-    }
 
   if (args)
     {
@@ -5248,6 +5818,276 @@ csky_pctrace (char *args, U32 *pclist, int *depth, int from_tty)
       i++;
     }
   return 0;
+}
+
+static void
+csky_pass_ctrlc (struct target_ops *self)
+{
+  /* FIXME: here, we don't care about allstop or non-stop.
+     Or any other problem, ...  */
+  if (is_executing (inferior_ptid))
+    {
+      csky_get_ctrlc = 1;
+    }
+  else if (!csky_should_use_multicore_functions ())
+    {
+      set_running (inferior_ptid, 0);
+      quit ();
+    }
+  else
+    {
+      /* ...  */
+    }
+}
+
+/* ------ck860-------  */
+
+/* Private data that we'll store in (struct thread_info)->private.  */
+struct private_thread_info
+{
+  int null;
+};
+
+/* A thread found on the remote target.  */
+
+typedef struct thread_item
+{
+  /* The thread's PTID.  */
+  ptid_t ptid;
+
+  /* The thread's extra info.  May be NULL.  */
+  char *extra;
+
+  /* The thread's name.  May be NULL.  */
+  char *name;
+
+  /* The core the thread was running on.  -1 if not known.  */
+  int core;
+} thread_item_t;
+DEF_VEC_O(thread_item_t);
+
+/* Context passed around to the various methods listing remote
+   threads.  As new threads are found, they're added to the ITEMS
+   vector.  */
+
+struct threads_listing_context
+{
+  /* The threads found on the remote target.  */
+  VEC (thread_item_t) *items;
+};
+
+/* Discard the contents of the constructed thread listing context.  */
+
+static void
+clear_threads_listing_context (void *p)
+{
+  struct threads_listing_context *context
+    = (struct threads_listing_context *) p;
+  int i;
+  struct thread_item *item;
+
+  for (i = 0; VEC_iterate (thread_item_t, context->items, i, item); ++i)
+    {
+      xfree (item->extra);
+      xfree (item->name);
+    }
+
+  VEC_free (thread_item_t, context->items);
+}
+
+/* List remote threads using qfCore/qsCore.  */
+
+static int
+csky_get_threads_with_qthreadinfo (struct target_ops *ops,
+                                   struct threads_listing_context *context)
+{
+  int ret = 0;
+  int lwp = 0;
+  int pid = 0;
+  ret = hardware_get_coreasthread (QFCORE_TYPE, &lwp);
+  if (ret)
+    {
+      error (errorinfo ());
+      return 0;
+    }
+  while (lwp != -1)
+    {
+      struct thread_item item;
+
+      if (ptid_equal (inferior_ptid, null_ptid))
+        pid = ptid_get_pid (remote_csky_ptid);
+      else
+        pid = ptid_get_pid (inferior_ptid);
+      item.ptid = ptid_build (pid, lwp, 0);
+      item.core = -1;
+      item.name = NULL;
+      item.extra = NULL;
+
+      VEC_safe_push (thread_item_t, context->items, &item);
+
+      ret = hardware_get_coreasthread (QSCORE_TYPE, &lwp);
+      if (ret)
+        {
+          error (errorinfo ());
+          return 0;
+        }
+    }
+  return 1;
+}
+
+/* Implement the to_update_thread_list function for the csky remote
+   targets.  */
+
+static void
+csky_update_thread_list (struct target_ops *ops)
+{
+  struct threads_listing_context context;
+  struct cleanup *old_chain;
+
+  context.items = NULL;
+
+  if (!csky_should_use_multicore_functions ())
+    return;
+
+  old_chain = make_cleanup (clear_threads_listing_context, &context);
+
+  prune_threads ();
+
+  if (csky_get_threads_with_qthreadinfo (ops, &context))
+    {
+      int i;
+      struct thread_item *item;
+      /* Add threads we don't know about yet to our list.  */
+      for (i = 0;
+           VEC_iterate (thread_item_t, context.items, i, item);
+           ++i)
+        {
+          if (!ptid_equal (item->ptid, null_ptid))
+            {
+              if (!in_thread_list (item->ptid))
+                {
+                  if (csky_connecting_flag)
+                    add_thread_silent (item->ptid);
+                  else
+                    add_thread (item->ptid);
+                }
+            }
+        }
+    }
+  do_cleanups (old_chain);
+}
+
+static int
+csky_thread_always_alive (struct target_ops *ops, ptid_t ptid)
+{
+  if (ptid_equal (ptid, remote_csky_ptid))
+    /* The main thread is always alive.  */
+    return 1;
+
+  if (ptid_get_pid (ptid) != 0 && ptid_get_lwp (ptid) == 0)
+    return 1;
+
+  return 0;
+}
+
+/* Return nonzero if the thread PTID is still alive on the remote
+   system.  */
+
+static int
+csky_thread_alive_multicore (struct target_ops *ops, ptid_t ptid)
+{
+  int ret = 0;
+  int alive_status = 0;
+
+  /* Check if this is a thread that we made up ourselves to model
+     non-threaded targets as single-threaded.  */
+  if (csky_thread_always_alive (ops, ptid))
+    return 1;
+
+  ret = hardware_check_threadalive (ptid_get_lwp (ptid), &alive_status);
+  if (ret)
+    {
+      error (errorinfo ());
+      return 0;
+    }
+
+  return alive_status ? 1 : 0;
+}
+
+static void
+csky_set_thread_multicore (struct ptid ptid)
+{
+  int ret = 0;
+  if (ptid_equal (ptid, remote_csky_ptid)
+      || ptid_equal (ptid, minus_one_ptid)
+      || ptid_equal (ptid, null_ptid))
+    return;
+
+  ret = hardware_select_thread (ptid);
+  if (ret)
+    {
+      error (errorinfo ());
+    }
+}
+
+
+/* Check whether current gdb should use functions that debuging target
+   as CSKY multicore thread.  */
+
+static int
+csky_should_use_multicore_functions (void)
+{
+  if (csky_rtos_ops_flag)
+    return 0;
+  if (csky_agent_multicore_thread != -1)
+    return csky_agent_multicore_thread;
+  else
+    {
+      int ret = 0;
+      int agent_mode = 0;
+      ret = hardware_check_agent_mode (&agent_mode);
+      if (ret)
+        {
+          error (errorinfo ());
+          return 0;
+        }
+      if (agent_mode == 1)
+        {
+          csky_agent_multicore_thread = 1;
+          return csky_agent_multicore_thread;
+        }
+      return 0;
+    }
+}
+
+/*
+ * Collect a descriptive string about the given thread.
+ * The target may say anything it wants to about the thread
+ * (typically info about its blocked / runnable state, name, etc.).
+ * This string will appear in the info threads display.
+ *
+ * Optional: targets are not required to implement this function.
+ */
+
+static char *
+csky_threads_extra_info (struct target_ops *self, struct thread_info *tp)
+{
+  int ret;
+  static char display_buf[100]; /* arbitrary...  */
+
+  display_buf[0] = '\0';
+
+  if (ptid_equal (tp->ptid, remote_csky_ptid)
+      || (ptid_get_pid (tp->ptid) != 0 && ptid_get_lwp (tp->ptid) == 0))
+    /* This is the main thread which was added by GDB.  The remote
+       server doesn't know about it.  */
+    return NULL;
+
+  ret = hardware_get_thread_extra_info ( ptid_get_lwp (tp->ptid), display_buf);
+  if (ret)
+     error (errorinfo ());
+  else
+    return display_buf;
 }
 
 static void
@@ -5290,9 +6130,63 @@ init_csky_ops ()
   csky_ops.to_has_execution = csky_has_execution;
   csky_ops.to_magic = OPS_MAGIC;
   csky_ops.to_mourn_inferior = csky_mourn_inferior;
+  csky_ops.to_pass_ctrlc = csky_pass_ctrlc;
+  csky_ops.to_update_thread_list = csky_update_thread_list;
+  csky_ops.to_extra_thread_info = csky_threads_extra_info;
+
+}
+
+/* Initial target_ops with csky_ops
+   to_shortname and to_open should be set after this function.  */
+void
+prepare_csky_ops (struct target_ops* ops)
+{
+  /* To_shorname to_open will be set after this function.  */
+  ops->to_longname = "Remote multi-threaded debugging";
+  ops->to_doc = "Use a CSKY board via a serial line, using jtag protocol.";
+  ops->to_close = csky_close;
+  ops->to_attach = csky_attach;
+  ops->to_detach = csky_detach;
+  ops->to_resume = csky_resume;
+  ops->to_wait = csky_wait;
+  ops->to_fetch_registers = csky_fetch_registers;
+  ops->to_store_registers = csky_store_registers;
+  ops->to_prepare_to_store = csky_prepare_to_store;
+  ops->to_xfer_partial = csky_xfer_partial;
+  ops->to_files_info = csky_files_info;
+  ops->to_insert_breakpoint = csky_insert_breakpoint;
+  ops->to_remove_breakpoint = csky_remove_breakpoint;
+  ops->to_can_use_hw_breakpoint = csky_can_use_hardware_watchpoint;
+  ops->to_insert_hw_breakpoint = csky_insert_hw_breakpoint;
+  ops->to_remove_hw_breakpoint = csky_remove_hw_breakpoint;
+  ops->to_insert_watchpoint = csky_insert_watchpoint;
+  ops->to_remove_watchpoint = csky_remove_watchpoint;
+  ops->to_stopped_by_watchpoint = csky_stopped_by_watchpoint;
+  ops->to_stopped_data_address = csky_stopped_data_address;
+  ops->to_kill = csky_kill;
+  ops->to_load = csky_load;
+  ops->to_create_inferior = csky_create_inferior;
+  ops->to_log_command = serial_log_command;
+  ops->to_thread_alive = csky_thread_alive;
+  ops->to_pid_to_str = csky_pid_to_str;
+  ops->to_stratum = process_stratum;
+  ops->to_has_all_memory = csky_return_one;
+  ops->to_has_memory = csky_return_one;
+  ops->to_has_stack = csky_return_one;
+  ops->to_has_registers = csky_return_one;
+  ops->to_has_execution = csky_has_execution;
+  ops->to_magic = OPS_MAGIC;
+  ops->to_mourn_inferior = csky_mourn_inferior;
+  ops->to_attach_no_wait = 1;
 }
 
 extern initialize_file_ftype _initialize_csky_jtag;
+
+struct target_ops*
+get_csky_ops ()
+{
+  return &csky_ops;
+}
 
 void
 _initialize_csky_jtag (void)
@@ -5303,6 +6197,7 @@ _initialize_csky_jtag (void)
   csky_ops.to_shortname = "jtag";
   add_target (&csky_ops);
 
+  init_rtos_ops ();
   /* TODO: add reset/pctrace command.  */
   add_com ("reset", class_run, csky_reset_command,
            _("Reset remote target.\n\
@@ -5318,15 +6213,19 @@ Usage: sreset -c parameter, parameter must be hex, starting with 0x"));
            "Watch the pc jump trace of target machine. Showing pc is the "
            "object address of jump instructions. The first pc is newest\n");
 
-  add_info ("mthreads", csky_info_mthreads_command,
-                  "multi-threads commands, only support in multi-threads debugging:\n  info mthreads list:list all threads' info.\n  info mthreads ID:list one thread's detailed info.\n  info mthreads stack all:list all threads' stack info.\n  info mthreads stack depth [ID]:list one or all thread(s) stack depth info.");
-
   add_setshow_boolean_cmd ("show-load-progress", class_support, &load_flag,
           "Set print progress of program loading.",
           "Show print progress of program loading.",
           NULL,
           NULL,
           NULL, /* FIXME: i18n: */
+          &setlist, &showlist);
+  add_setshow_boolean_cmd ("debug-in-rom", class_support, &debug_in_rom,
+          "Set  debug-in-rom.",
+          "Show  debug-in-rom.",
+          NULL,
+          NULL,
+          NULL, /* FIXME: i18n:  */
           &setlist, &showlist);
 
   add_setshow_boolean_cmd ("prereset", class_support, &prereset_flag,
@@ -5346,6 +6245,29 @@ Usage: sreset -c parameter, parameter must be hex, starting with 0x"));
           "blocked writes. The actual size of each transfer is also\n"
           "limited by the size of the target packet and the memory\n"
           "cache.\n",
+          NULL, NULL,
+          &setlist, &showlist);
+
+  add_setshow_filename_cmd("gdb-continue-file", no_class,
+          &gdbcontinuefile,
+          "Set GDB continue script filepath.",
+          "Show GDB continue script filepath.",
+          "\n"
+          "when exe continue command,GDB will exe the script by the path.\n"
+          "\n"
+          "\n"
+          "\n",
+          NULL, NULL,
+          &setlist, &showlist);
+  add_setshow_filename_cmd("gdb-stop-file", no_class,
+          &gdbstopfile,
+          "Set GDB stop script filepath.",
+          "Show GDB stop script filepath.",
+          "\n"
+          "when CPU in debug mode,GDB will exe the script by the path.\n"
+          "\n"
+          "\n"
+          "\n",
           NULL, NULL,
           &setlist, &showlist);
 

@@ -72,6 +72,16 @@
 #include "btrace.h"
 #include "record-btrace.h"
 
+#ifdef CSKYGDB_CONFIG
+
+/* for support c-sky pctrace command in remote debug method  */
+#include "csky-tdep.h"
+
+extern pctrace_function_type pctrace;
+static int remote_pctrace (char *args, unsigned int  *pclist,
+                           int *depth, int from_tty);
+#endif /* CSKYGDB_CONFIG */
+
 /* Temp hacks for tracepoint encoding migration.  */
 static char *target_buf;
 static long target_buf_size;
@@ -3527,6 +3537,11 @@ remote_close (struct target_ops *self)
   remote_notif_state_xfree (rs->notif_state);
 
   trace_reset_local_state ();
+
+#ifdef CSKYGDB_CONFIG
+  /* For support csky pctrace command in remote debug method.  */
+  pctrace = NULL;
+#endif
 }
 
 /* Query the remote side for the text, data and bss offsets.  */
@@ -5007,6 +5022,11 @@ remote_open_1 (const char *name, int from_tty,
       puts_filtered ("\n");
     }
   push_target (target);		/* Switch to using remote target now.  */
+
+#ifdef CSKYGDB_CONFIG
+  /* For support csky pctrace command in remote debug method.  */
+  pctrace = remote_pctrace;
+#endif
 
   /* Register extra event sources in the event loop.  */
   remote_async_inferior_event_token
@@ -14014,3 +14034,82 @@ stepping is supported by the target.  The default is on."),
   target_buf = (char *) xmalloc (target_buf_size);
 }
 
+#ifdef CSKYGDB_CONFIG
+/* Add support of pctrace command of c-sky.  */
+
+#define DEFAULT_PCTRACE_DEPTH 8
+
+static void
+send_uptrace_packet (int *depth)
+{
+  int buf_len;
+  struct remote_state *rs = get_remote_state ();
+  /* Initialize to default depth 8.  */
+  sprintf (rs->buf, "upctrace %d", *depth);
+  remote_send (&rs->buf, &rs->buf_size);
+  buf_len = strlen (rs->buf);
+  if (buf_len == 0)
+    {
+      *depth = 0;
+      return;
+    }
+  else
+    {
+      if ((buf_len / 2) < 4)
+        {
+          error ("Remote pctrace reply is incorrect");
+        }
+    }
+}
+
+static void
+process_uptrace_packet (char *args, int *depth, unsigned int *buffer_dest)
+{
+  unsigned int size, i;
+  unsigned char *decode_buf, *p;
+  struct remote_state *rs = get_remote_state ();
+  char *buffer = rs->buf;
+  int buffer_len = strlen (buffer);
+  int depth_real = *depth;
+  if (buffer_len == 0)
+    {
+      return;
+    }
+  decode_buf = (unsigned char *) alloca (buffer_len / 2);
+  memset (decode_buf, 0, buffer_len /2);
+  /* Decode data in reply packet.  */
+  for (i = 0; i < buffer_len / 2; i++)
+    {
+      decode_buf[i] = fromhex (buffer[0]) * 16 + fromhex (buffer[1]);
+      buffer += 2;
+    }
+  p = decode_buf;
+  size  = (p[3] << 24) + (p[2] << 16) + (p[1] << 8) + (p[0]);
+  p += 4;
+  if ((buffer_len/2 - 4) % size != 0)
+    {
+      error (_("Remote 'uptrace' packet reply is of incorrect length: %s"),
+               rs->buf);
+    }
+  if (buffer_len/2 < (*depth) * size + 4)
+    {
+      depth_real = (buffer_len/2 - 4)/size;
+      if (args != NULL)
+        warning (_("Remote pctrace  packet : only %d traced pc, less than"
+                   " pctrace %d\n"), depth_real, *depth);
+    }
+  for (i = 0; i < depth_real; i++)
+    {
+      buffer_dest[i] = (p[3] << 24) + (p[2] << 16) + (p[1] << 8) + (p[0]);
+      p += size;
+    }
+}
+
+static int
+remote_pctrace (char *args, unsigned int  *pclist, int *depth, int from_tty)
+{
+  send_uptrace_packet (depth);
+  process_uptrace_packet (args, depth, pclist);
+  return 0;
+}
+#endif  /* CSKYGDB_CONFIG */

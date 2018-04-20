@@ -152,12 +152,18 @@ tdesc_start_target (struct gdb_xml_parser *parser,
 		    const struct gdb_xml_element *element,
 		    void *user_data, VEC(gdb_xml_value_s) *attributes)
 {
+#ifdef CSKYGDB_CONFIG
+  struct tdesc_parsing_data *data =(struct tdesc_parsing_data *) user_data;
+#endif
   char *version = (char *) xml_find_attribute (attributes, "version")->value;
 
   if (strcmp (version, "1.0") != 0)
     gdb_xml_error (parser,
 		   _("Target description has unsupported version \"%s\""),
 		   version);
+#ifdef CSKYGDB_CONFIG
+  csky_set_target_version (data->tdesc, version);
+#endif
 }
 
 /* Handle the start of a <feature> element.  */
@@ -186,6 +192,11 @@ tdesc_start_reg (struct gdb_xml_parser *parser,
   int ix = 0, length;
   char *name, *group, *type;
   int bitsize, regnum, save_restore;
+#ifdef CSKYGDB_CONFIG
+  char *regs;
+  long addr;
+#endif
+
 
   length = VEC_length (gdb_xml_value_s, attributes);
 
@@ -211,6 +222,18 @@ tdesc_start_reg (struct gdb_xml_parser *parser,
     save_restore = * (ULONGEST *) attrs[ix++].value;
   else
     save_restore = 1;
+#ifdef CSKYGDB_CONFIG
+  if (ix < length && strcmp (attrs[ix].name, "regs") == 0)
+    regs = (char *)attrs[ix++].value;
+  else
+    regs = NULL;
+
+  if (ix < length && strcmp (attrs[ix].name, "addr") == 0)
+    addr = * (ULONGEST *) attrs[ix++].value;
+  else
+    addr = 1;
+#endif
+
 
   if (strcmp (type, "int") != 0
       && strcmp (type, "float") != 0
@@ -218,8 +241,13 @@ tdesc_start_reg (struct gdb_xml_parser *parser,
     gdb_xml_error (parser, _("Register \"%s\" has unknown type \"%s\""),
 		   name, type);
 
+#ifndef CSKYGDB_CONFIG
   tdesc_create_reg (data->current_feature, name, regnum, save_restore, group,
-		    bitsize, type);
+                    bitsize, type);
+#else
+  csky_tdesc_create_reg (data->current_feature, name, regnum, save_restore,
+                         group, bitsize, type, regs, addr);
+#endif
 
   data->next_regnum = regnum + 1;
 }
@@ -545,6 +573,10 @@ static const struct gdb_xml_attribute reg_attributes[] = {
   { "group", GDB_XML_AF_OPTIONAL, NULL, NULL },
   { "save-restore", GDB_XML_AF_OPTIONAL,
     gdb_xml_parse_attr_enum, gdb_xml_enums_boolean },
+#ifdef CSKYGDB_CONFIG
+  { "regs", GDB_XML_AF_OPTIONAL, NULL, NULL },
+  { "addr", GDB_XML_AF_OPTIONAL, gdb_xml_parse_attr_ulongest, NULL },
+#endif
   { NULL, GDB_XML_AF_NONE, NULL, NULL }
 };
 
@@ -641,7 +673,9 @@ tdesc_parse_xml (const char *document, xml_fetch_another fetcher,
 					 document, fetcher, fetcher_baton, 0);
   if (expanded_text == NULL)
     {
+#ifndef CSKYGDB_CONFIG
       warning (_("Could not load XML target description; ignoring"));
+#endif
       return NULL;
     }
 

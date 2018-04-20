@@ -1,0 +1,4 @@
+tar jtag jtag://172.16.28.49:1025
+reset
+#set $cr18=0x4171
+set $cr18=0x1

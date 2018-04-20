@@ -41,6 +41,21 @@
 struct frame_info;
 struct gdbarch;
 
+#ifdef CSKYGDB_CONFIG
+/* For csky user reg add.  */
+struct user_reg_list
+{
+   char *name;
+   int target_regnum;
+   struct user_reg_list *next;
+};
+
+/* Add csky user reg name add regnum to m_user_reg_list */
+void
+csky_user_reg_list_add (struct user_reg_list **list, char *name, int regnum);
+
+#endif /* CSKYGDB_CONFIG */
+
 /* Given an architecture, map a user visible register name onto its
    index.  */
 

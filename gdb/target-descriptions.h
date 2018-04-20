@@ -22,6 +22,11 @@
 #ifndef TARGET_DESCRIPTIONS_H
 #define TARGET_DESCRIPTIONS_H 1
 
+#ifdef CSKYGDB_CONFIG
+#include "user-regs.h"
+struct pseudo_reg;
+#endif
+
 struct tdesc_feature;
 struct tdesc_arch_data;
 struct tdesc_type;
@@ -252,5 +257,99 @@ void tdesc_add_enum_value (struct tdesc_type *type, int value,
 void tdesc_create_reg (struct tdesc_feature *feature, const char *name,
 		       int regnum, int save_restore, const char *group,
 		       int bitsize, const char *type);
+#ifdef CSKYGDB_CONFIG
+/* For csky pseudo reg  */
+struct pseudo_reg_children
+{
+  int regnum;
+  struct pseudo_reg_children *next;
+};
+
+/* Csky xml numbered register  */
+int
+csky_tdesc_numbered_register (const struct tdesc_feature *feature,
+                              struct tdesc_arch_data *data,
+                              struct reggroup_el **m_reggroup_list,
+                              struct user_reg_list **m_user_reg_list,
+                              const struct target_desc *tdesc);
+
+/* Check whether there are regs with the same name  */
+void csky_tdesc_pseudo_reg_name_exists_check (
+        struct pseudo_reg *m_pseudo_reg_list,
+        struct tdesc_arch_data *data);
+
+/* Get pseudo regs msg from feature which is named "org.gnu.csky.pseudo"  */
+int
+csky_tdesc_get_pseudo_regs (const struct tdesc_feature *feature,
+                            struct tdesc_arch_data *data,
+                            struct pseudo_reg **m_pseudo_reg_list,
+                            struct reggroup_el **m_reggroup_list,
+                            const struct target_desc *tdesc);
+
+/* Free m_pseudo_reg_list  */
+void
+csky_tdesc_free_pseudo_reg_list (struct pseudo_reg **m_pseudo_reg_list);
+
+/* Return is_mem of pseudo_reg of m_pseudo_reg_list find by regnum
+   if regnum does not exist, return -1; or return is_mem  */
+int
+csky_tdesc_get_ismem (struct gdbarch *gdbarch,
+                      struct pseudo_reg *m_pseudo_reg_list,
+                      int regnum);
+
+/* Return addr of pseudo_reg from m_pseudo_reg_list find by regnum  */
+long
+csky_tdesc_get_addr (struct gdbarch *gdbarch,
+                     struct pseudo_reg *m_pseudo_reg_list,
+                     int regnum);
+
+/* Return struct pseudo_reg_children of pseudo_reg from m_pseudo_reg_list
+   find by regnum  */
+struct pseudo_reg_children *
+csky_tdesc_get_regs_children (struct gdbarch *gdbarch,
+                              struct pseudo_reg *m_pseudo_reg_list,
+                              int regnum);
+/* Return a feature found by count, if find,return the feature; if not,
+   return NULL  */
+const struct tdesc_feature *
+csky_tdesc_find_feature (const struct target_desc *target_desc,
+                         const int count);
+
+/* Return max regnum in data  */
+int
+csky_get_max_regnum_from_tdesc_data (const struct tdesc_arch_data *data);
+
+/* Check whether a reg with regnum is regno exists in data  */
+int
+csky_tdesc_register_exists (struct tdesc_arch_data *data, int regno);
+
+/* Return csky pseudo reg's name  */
+const char *
+csky_tdesc_pseudo_register_name (struct gdbarch *gdbarch, int regno,
+                                 struct pseudo_reg *m_pseudo_reg_list);
+
+/* Csky tdesc register group p, decided by reg->group written in the xml  */
+int
+csky_tdesc_register_reggroup_p (struct gdbarch *gdbarch, int regno,
+                                struct reggroup *reggroup,
+                                struct pseudo_reg *m_pseudo_reg_list);
+
+/* Set tdesc_data version from xml  */
+void
+csky_set_target_version (struct target_desc *tdesc, const char *version);
+
+/* Return for csky pseudo register  */
+struct type *
+csky_tdesc_pseudo_register_type (struct gdbarch *gdbarch, int regno,
+                                 struct pseudo_reg *m_pseudo_reg_list);
+
+/* Create a reg add csky pseudo attributes "regs" and "addr"  */
+void
+csky_tdesc_create_reg (struct tdesc_feature *feature, const char *name,
+                       int regnum, int save_restore, const char *group,
+                       int bitsize, const char *type,const char *regs,
+                       int addr);
+#endif /* CSKYGDB_CONFIG */
+
 
 #endif /* TARGET_DESCRIPTIONS_H */

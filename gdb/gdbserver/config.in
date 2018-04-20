@@ -417,3 +417,6 @@
 
 /* Define as `fork' if `vfork' does not work. */
 #undef vfork
+
+/* Define if csky linux kernel version is 2.6.27.55  */
+#undef __CSKY_LINUX_2_6_27_55__

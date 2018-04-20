@@ -562,6 +562,11 @@ gdb_xml_parse (struct gdb_xml_parser *parser, const char *buffer)
   enum XML_Status status;
   const char *error_string;
 
+#ifdef CSKYGDB_CONFIG
+  if (buffer[0]  == '\0')
+    return -1;
+#endif
+
   gdb_xml_debug (parser, _("Starting:\n%s"), buffer);
 
   status = XML_Parse (parser->expat_parser, buffer, strlen (buffer), 1);

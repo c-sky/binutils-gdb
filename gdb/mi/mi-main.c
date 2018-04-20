@@ -62,6 +62,14 @@
 #include <sys/resource.h>
 #endif
 
+#ifdef CSKYGDB_CONFIG
+#include "csky-tdep.h"
+#include "reggroups.h"
+#include "target-descriptions.h"
+#include "opcode/csky.h"
+static struct regcache *this_regs = NULL;
+#endif
+
 #ifdef HAVE_GETRUSAGE
 struct rusage rusage;
 #endif
@@ -1063,7 +1071,9 @@ mi_cmd_data_list_register_names (char *command, char **argv, int argc)
 void
 mi_cmd_data_list_changed_registers (char *command, char **argv, int argc)
 {
+#ifndef CSKYGDB_CONFIG
   static struct regcache *this_regs = NULL;
+#endif /* not CSKYGDB_CONFIG */
   struct ui_out *uiout = current_uiout;
   struct regcache *prev_regs;
   struct gdbarch *gdbarch;
@@ -1077,7 +1087,11 @@ mi_cmd_data_list_changed_registers (char *command, char **argv, int argc)
      contents.  */
 
   prev_regs = this_regs;
+#ifdef CSKYGDB_CONFIG
+  this_regs = frame_save_as_regcache_reglist (get_selected_frame (NULL));
+#else  /* not CSKYGDB_CONFIG */
   this_regs = frame_save_as_regcache (get_selected_frame (NULL));
+#endif /* not CSKYGDB_CONFIG */
   cleanup = make_cleanup_regcache_xfree (prev_regs);
 
   /* Note that the test for a valid register must include checking the
@@ -3052,3 +3066,365 @@ Tells GDB whether MI should be in asynchronous mode."),
   c = add_alias_cmd ("target-async", "mi-async", class_run, 0, &showlist);
   deprecate_cmd (c, "show mi-async");
 }
+
+#ifdef CSKYGDB_CONFIG
+/* Add a register to the selected register list, which will be update
+   when conducting data-list-changed-registers command. the arguments
+   expected is registers number list, this can be hexadecimal, decimal  */
+
+void
+mi_cmd_data_add_register_list (char *command, char **argv, int argc)
+{
+  struct frame_info *frame;
+  struct gdbarch *gdbarch;
+  int regnum, numregs, i,j;
+  struct gdbarch_tdep * tdep;
+  frame = get_selected_frame (NULL);
+  gdbarch = get_frame_arch (frame);
+  numregs = gdbarch_num_regs (gdbarch) + gdbarch_num_pseudo_regs (gdbarch);
+  tdep= gdbarch_tdep (gdbarch);
+  if (tdep == NULL || tdep->selected_registers == NULL)
+    error ("No selected register list found.");
+  if (argc == 0)
+    error ("Usage: -data-add-register-list [<regnum1>...<regnumN>]");
+  for (i = 0; i < argc; i++)
+    {
+      regnum = atoi (argv[i]);
+      if ((regnum == -1) && (argc == 1)) /* arg -1,disable all registers  */
+        {
+          for (j = 0; j < numregs; j++)
+            {
+              tdep->selected_registers[j] = 0;
+            }
+          /* Except for return value registers  */
+          if (tdep->return_reg >= 0 && tdep->return_reg < numregs)
+            {
+              tdep->selected_registers[tdep->return_reg] = 1;
+              tdep->selected_registers[tdep->return_reg + 1] = 1;
+            }
+        }
+      /* Add an register to list  */
+      else if (regnum >= 0 && regnum < numregs
+               && tdep->selected_registers != NULL)
+        {
+          tdep->selected_registers[regnum] = 1;
+          regcache_update_prev_reglist (regnum, this_regs,
+                                        get_selected_frame (NULL));
+        }
+      else
+        error (_("invalid register number %d"), regnum);
+    }
+}
+
+
+static void
+csky_output_register_names_group_default ()
+{
+  int regnum, numregs;
+  int insn_version, mach;
+  struct gdbarch *gdbarch;
+  struct reggroup *group;
+  struct cleanup *cleanup;
+  struct ui_out *uiout = current_uiout;
+
+  gdbarch = get_current_arch ();
+  numregs = gdbarch_num_regs (gdbarch) + gdbarch_num_pseudo_regs (gdbarch);
+
+#ifndef CSKYGDB_CONFIG_ABIV2
+  mach = gdbarch_bfd_arch_info (get_current_arch ())->mach;
+  insn_version = (((mach & CSKY_ARCH_MASK) == CSKY_ARCH_510) ||
+                  ((mach & CSKY_ARCH_MASK) == CSKY_ARCH_610)) ?
+                        CSKY_INSN_V1 : CSKY_INSN_V2P;
+#endif
+
+  /* Output Registers Names Group.  */
+  /* General Registers.  */
+  group = NULL;
+  for (group = reggroup_next (gdbarch, NULL);
+       group != NULL;
+       group = reggroup_next (gdbarch, group))
+    {
+      if (strcmp ("general", reggroup_name (group)) == 0)
+        break;
+    }
+  if (group == NULL)
+     error (_("can't find register group \"general\""));
+  cleanup = make_cleanup_ui_out_list_begin_end (uiout,
+                                                "General-Registers");
+  for (regnum = 0; regnum < numregs; regnum++)
+    {
+      if (gdbarch_register_reggroup_p (gdbarch, regnum, group))
+        ui_out_field_string (uiout, NULL,
+                             gdbarch_register_name (gdbarch, regnum));
+      /* Print PC PSR EPC EPSR when reggroup is "general"  */
+      else if ((regnum == CSKY_PC_REGNUM)       /* PC  */
+              || (regnum == CSKY_CR0_REGNUM)   /* PSR  */
+              || (regnum == CSKY_EPC_REGNUM)   /* EPC  */
+              || (regnum == CSKY_EPSR_REGNUM)) /* EPSR  */
+            ui_out_field_string (uiout, NULL,
+                                 gdbarch_register_name (gdbarch, regnum));
+      else
+        ui_out_field_string (uiout, NULL, "");
+    }
+  do_cleanups (cleanup);
+
+  /* Control-Registers.  */
+  group = NULL;
+  for (group = reggroup_next (gdbarch, NULL);
+       group != NULL;
+       group = reggroup_next (gdbarch, group))
+    {
+      if (strcmp ("cr", reggroup_name (group)) == 0)
+        break;
+    }
+  if (group == NULL)
+     error (_("can't find register group \"cr\""));
+  cleanup = make_cleanup_ui_out_list_begin_end (uiout,
+                                                "Control-Registers");
+  for (regnum = 0; regnum < numregs; regnum++)
+    {
+      if (gdbarch_register_reggroup_p (gdbarch, regnum, group))
+        ui_out_field_string (uiout, NULL,
+                             gdbarch_register_name (gdbarch, regnum));
+      else
+        ui_out_field_string (uiout, NULL, "");
+    }
+  do_cleanups (cleanup);
+
+  /* Float-Registers.  */
+#ifndef CSKYGDB_CONFIG_ABIV2
+  if (insn_version == CSKY_INSN_V2P)
+#endif
+    {
+      group = NULL;
+      for (group = reggroup_next (gdbarch, NULL);
+           group != NULL;
+           group = reggroup_next (gdbarch, group))
+        {
+          if (strcmp ("fr", reggroup_name (group)) == 0)
+            break;
+        }
+      if (group == NULL)
+         error (_("can't find register group \"fr\""));
+      cleanup = make_cleanup_ui_out_list_begin_end (uiout,
+                                                    "Float-Registers");
+      for (regnum = 0; regnum < numregs; regnum++)
+        {
+          if (gdbarch_register_reggroup_p (gdbarch, regnum, group))
+            ui_out_field_string (uiout, NULL,
+                                 gdbarch_register_name (gdbarch, regnum));
+          else
+            ui_out_field_string (uiout, NULL, "");
+        }
+      do_cleanups (cleanup);
+    }
+
+  /* Vector-Registers.  */
+  group = NULL;
+  for (group = reggroup_next (gdbarch, NULL);
+       group != NULL;
+       group = reggroup_next (gdbarch, group))
+    {
+      if (strcmp ("vr", reggroup_name (group)) == 0)
+        break;
+    }
+  if (group == NULL)
+     error (_("can't find register group \"vr\""));
+  cleanup = make_cleanup_ui_out_list_begin_end (uiout,
+                                                "Vector-Registers");
+  for (regnum = 0; regnum < numregs; regnum++)
+    {
+      if (gdbarch_register_reggroup_p (gdbarch, regnum, group))
+        ui_out_field_string (uiout, NULL,
+                             gdbarch_register_name (gdbarch, regnum));
+      else
+        ui_out_field_string (uiout, NULL, "");
+    }
+  do_cleanups (cleanup);
+
+  /* Mmu-Control-Registers.  */
+  group = NULL;
+  for (group = reggroup_next (gdbarch, NULL);
+       group != NULL;
+       group = reggroup_next (gdbarch, group))
+    {
+      if (strcmp ("mmu", reggroup_name (group)) == 0)
+        break;
+    }
+  if (group == NULL)
+     error (_("can't find register group \"mmu\""));
+  cleanup = make_cleanup_ui_out_list_begin_end (uiout,
+                                                "Mmu-Control-Registers");
+  for (regnum = 0; regnum < numregs; regnum++)
+    {
+      if (gdbarch_register_reggroup_p (gdbarch, regnum, group))
+        ui_out_field_string (uiout, NULL,
+                             gdbarch_register_name (gdbarch, regnum));
+      else
+        ui_out_field_string (uiout, NULL, "");
+    }
+  do_cleanups (cleanup);
+
+#ifdef CSKYGDB_CONFIG_ABIV2  /* ABIV2 HAS PROFILING REG */
+  /* Profiling-Registers.  */
+  group = NULL;
+  for (group = reggroup_next (gdbarch, NULL);
+       group != NULL;
+       group = reggroup_next (gdbarch, group))
+    {
+      if (strcmp ("profiling", reggroup_name (group)) == 0)
+        break;
+    }
+  if (group == NULL)
+     error (_("can't find register group \"profiling\""));
+  cleanup = make_cleanup_ui_out_list_begin_end (uiout,
+                                                "Profiling-Registers");
+  for (regnum = 0; regnum < numregs; regnum++)
+    {
+      if (gdbarch_register_reggroup_p (gdbarch, regnum, group))
+        ui_out_field_string (uiout, NULL,
+                             gdbarch_register_name (gdbarch, regnum));
+      else
+        ui_out_field_string (uiout, NULL, "");
+    }
+  do_cleanups (cleanup);
+#endif
+}
+
+static void
+csky_output_register_names_group_xml ()
+{
+  int regnum, numregs;
+  struct cleanup *cleanup;
+  struct gdbarch *gdbarch;
+  struct reggroup *group;
+  struct ui_out *uiout = current_uiout;
+
+  gdbarch = get_current_arch ();
+  numregs = gdbarch_num_regs (gdbarch) + gdbarch_num_pseudo_regs (gdbarch);
+
+  for (group = reggroup_next (gdbarch, NULL);
+       group != NULL;
+       group = reggroup_next (gdbarch, group))
+   {
+     if (strcmp (reggroup_name (group), "all") == 0)
+       continue;
+
+     cleanup = make_cleanup_ui_out_list_begin_end (uiout,
+                                                   reggroup_name (group));
+     for (regnum = 0; regnum < numregs; regnum++)
+       {
+         if (gdbarch_register_reggroup_p (gdbarch, regnum, group))
+           ui_out_field_string (uiout, NULL,
+                                gdbarch_register_name (gdbarch, regnum));
+         else
+           ui_out_field_string (uiout, NULL, "");
+       }
+     do_cleanups (cleanup);
+   }
+}
+
+
+void
+mi_cmd_data_list_register_names_group (char *command, char **argv, int argc)
+{
+  struct gdbarch *gdbarch = get_current_arch ();
+
+  if (tdesc_has_registers (gdbarch_target_desc (gdbarch)))
+    csky_output_register_names_group_xml ();
+  else
+    csky_output_register_names_group_default ();
+}
+
+void
+mi_cmd_flush (char *command, char **argv, int argc)
+{
+  struct ui_out *uiout = current_uiout;
+  struct mi_interp *mi
+    = (struct mi_interp *) interp_data (current_interpreter ());
+
+  fputs_unfiltered ("^running\n", mi->raw_stdout);
+  fputs_unfiltered ("(gdb) \n", mi->raw_stdout);
+  gdb_flush (mi->raw_stdout);
+
+  fputs_unfiltered ("*stopped",mi-> raw_stdout);
+  mi_out_put (uiout, mi->raw_stdout);
+  mi_out_rewind (uiout);
+  fputs_unfiltered ("\n",mi-> raw_stdout);
+}
+
+void
+mi_cmd_reset (char *command, char **argv, int argc)
+{
+  struct ui_out *uiout = current_uiout;
+  struct mi_interp *mi
+    = (struct mi_interp *) interp_data (current_interpreter ());
+
+  fputs_unfiltered ("^running\n",mi-> raw_stdout);
+  fputs_unfiltered ("(gdb) \n",mi-> raw_stdout);
+  gdb_flush (mi->raw_stdout);
+
+  mi_execute_cli_command ("reset", argc, (const char *) argv);
+
+  fputs_unfiltered ("*stopped",mi-> raw_stdout);
+  mi_out_put (uiout,mi-> raw_stdout);
+  mi_out_rewind (uiout);
+  fputs_unfiltered ("\n", mi-> raw_stdout);
+}
+
+void
+mi_cmd_softreset (char *command, char **argv, int argc)
+{
+  char args[100] = {0};
+  char *p = args;
+  int i;
+
+  struct mi_interp *mi
+    = (struct mi_interp *) interp_data (current_interpreter ());
+
+  for (i = 0; (i < argc) && (p < args + 100); i++)
+    {
+      strncat (p, argv[i], strlen (argv[i]));
+      p += strlen (argv[i]);
+      strncat (p , " ", 1);
+      p += 1;
+    }
+
+  fputs_unfiltered ("^running\n", mi->raw_stdout);
+  fputs_unfiltered ("(gdb) \n", mi->raw_stdout);
+  gdb_flush (mi->raw_stdout);
+
+  mi_execute_cli_command ("sreset", argc, args);
+
+  fputs_unfiltered ("*stopped", mi->raw_stdout);
+  mi_out_put (current_uiout, mi->raw_stdout);
+  mi_out_rewind (current_uiout);
+  fputs_unfiltered ("\n", mi->raw_stdout);
+}
+
+void
+mi_cmd_target_pctrace (char *command, char **argv, int argc)
+{
+   mi_execute_cli_command ("pctrace", argc, (const char *) *argv);
+}
+
+void
+mi_cmd_target_download (char *command, char **argv, int argc)
+{
+  struct ui_out *uiout = current_uiout;
+  struct mi_interp *mi
+    = (struct mi_interp *) interp_data (current_interpreter ());
+
+  fputs_unfiltered ("^running\n",mi-> raw_stdout);
+  fputs_unfiltered ("(gdb) \n",mi-> raw_stdout);
+  gdb_flush (mi->raw_stdout);
+
+  mi_execute_cli_command ("load", argc, (const char *) argv);
+
+  fputs_unfiltered ("*stopped",mi-> raw_stdout);
+  mi_out_put (uiout,mi-> raw_stdout);
+  mi_out_rewind (uiout);
+  fputs_unfiltered ("\n", mi-> raw_stdout);
+}
+
+#endif /* CSKYGDB_CONFIG */

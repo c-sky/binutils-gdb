@@ -102,7 +102,13 @@ typedef enum
   DBGCMD_SYSTEM_SOFT_RESET      = 30,
   DBGCMD_HW_BKPT_NUM            = 31,
   DBGCMD_XML_TDESC_READ         = 32,
-  DBGCMD_DEL_ALL_HWBKPT         = 33
+  DBGCMD_DEL_ALL_HWBKPT         = 33,
+  DBGCMD_SET_CONTACT            = 34,
+  DBGCMD_THREAD_QCORE           = 35,
+  DBGCMD_SELECT_MULTICORE       = 36,
+  DBGCMD_CHECK_AGENT_MODE       = 37,
+  DBGCMD_CHECK_THREADALIVE      = 38,
+  DBGCMD_GET_THREADEXTRAINFO    = 39
 } DBG_CMD;
 
 
@@ -610,5 +616,106 @@ struct ReadXmlTdescRspStruct
   U8 data[0];
 };
 typedef struct ReadXmlTdescRspStruct ReadXmlTdescRsp;
+
+/* DBGCMD_SET_CONTACT (in ckmp).
+   Set whether current cpu sending out or reciving
+   debugging signal.  */
+#define MP_EVENT_OUT_ALL   0x3  /* 11B.  */
+#define MP_EVENT_OUT_EXIT  0x2  /* 10B.  */
+#define MP_EVENT_OUT_IN    0x1  /* 01B.  */
+#define MP_EVENT_OUT_NULL  0x0  /* 00B.  */
+
+#define MP_EVENT_IN_ALL    0x3  /* 11B.  */
+#define MP_EVENT_IN_EXIT   0x2  /* 10B.  */
+#define MP_EVENT_IN_IN     0x1  /* 01B.  */
+#define MP_EVENT_IN_NULL   0x0  /* 00B.  */
+typedef struct
+{
+  U32 command;
+  U32 length;     /* Length of data.  */
+  U32 flag_out;   /* For EVENT_OUTEN.  */
+  U32 flag_in;    /* For EVENT_INEN.  */
+} SetContactMPMsg;
+
+typedef struct
+{
+  U32 status;
+} SetContactMPRsp;
+
+/* SED MULTI CORE AS THREAD (in ckmp)
+   TYPE: 1, qfCore; 2, qsCore.  */
+#define QFCORE_TYPE 1
+#define QSCORE_TYPE 2
+typedef struct
+{
+  U32 command;
+  U32 length;     /* Length of data.  */
+  U32  type;      /* "qfCore" or "qsCore"  */
+} GetCoreAsThreadMsg;
+
+typedef struct
+{
+  U32 status;
+  U32 thread;     /* -1 for the end.  */
+} GetCoreAsThreadRsp;
+
+/* DBGCMD_SELECT_MULTICORE (in ckmp)
+   In ckmp, select cpu as gdb select thread.  */
+typedef struct
+{
+  U32 command;
+  U32 length;     /* Length of frame.  */
+  U32 thread;     /* Thread as cpu number.  */
+} SelectMulticoreMsg;
+
+typedef struct
+{
+  U32 status;
+} SelectMulticoreRsp;
+
+/* DBGCMD_CHECK_AGENT_MODE(in ckmp)
+   In ckmp, check whether Debugserver is in multicore_thread mode.  */
+typedef struct
+{
+  U32 command;
+  U32 length;     /* Length of data.  */
+} CheckAgentModeMsg;
+
+typedef struct
+{
+  U32 status;
+  U32 mode;
+} CheckAgentModeRsp;
+
+/* DBGCMD_CHECK_THREADALIVE (in ckmp)
+   In ckmp, check whether the specified core is normal.  */
+typedef struct
+{
+  U32 command;
+  U32 length;     /* Length of data.  */
+  U32 thread;     /* Thread as cpu number.  */
+} CheckThreadAliveMsg;
+
+typedef struct
+{
+  U32 status;
+  U32 thread_status;
+} CheckThreadAliveRsp;
+
+/* DBGCMD_GET_THREADEXTRAINFO (in ckmp)
+   In ckmp, get extra info for thread.  */
+typedef struct
+{
+  U32 command;
+  U32 length;     /* Length of data.  */
+  U32 thread;     /* Thread as cpu number.  */
+} GetThreadExtraInfoMsg;
+
+typedef struct
+{
+  U32 status;
+  U32 rlen;
+  U8  data[0];
+} GetThreadExtraInfoRsp;
 
 #endif /* __CKCORE_DEBUGGER_SERVER_DJP_H__  */

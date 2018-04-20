@@ -185,7 +185,8 @@ SFILES=	$(srcdir)/gdbreplay.c $(srcdir)/inferiors.c $(srcdir)/dll.c \
 	$(srcdir)/common/btrace-common.c \
 	$(srcdir)/common/fileio.c $(srcdir)/nat/linux-namespaces.c \
 	$(srcdir)/arch/arm.c $(srcdir)/common/common-regcache.c \
-	$(srcdir)/arch/arm-linux.c $(srcdir)/arch/arm-get-next-pcs.c
+	$(srcdir)/arch/arm-linux.c $(srcdir)/arch/arm-get-next-pcs.c \
+	$(srcdir)/linux-csky-low.c
 
 DEPFILES = @GDBSERVER_DEPFILES@
 
@@ -387,6 +388,7 @@ clean:
 	rm -f x32.c x32-linux.c
 	rm -f x32-avx.c x32-avx-linux.c
 	rm -f x32-avx512.c x32-avx512-linux.c
+	rm -f cskyv1-linux.c cskyv2-linux.c
 	@$(MAKE) $(FLAGS_TO_PASS) DO=$@ "DODIRS=$(SUBDIRS)" subdir_do
 
 maintainer-clean realclean distclean: clean
@@ -856,6 +858,10 @@ mips64-linux.c : $(srcdir)/../regformats/mips64-linux.dat $(regdat_sh)
 	$(SHELL) $(regdat_sh) $(srcdir)/../regformats/mips64-linux.dat mips64-linux.c
 mips64-dsp-linux.c : $(srcdir)/../regformats/mips64-dsp-linux.dat $(regdat_sh)
 	$(SHELL) $(regdat_sh) $(srcdir)/../regformats/mips64-dsp-linux.dat mips64-dsp-linux.c
+cskyv1-linux.c : $(srcdir)/../regformats/cskyv1-linux.dat $(regdat_sh)
+	 $(SHELL) $(regdat_sh) $(srcdir)/../regformats/cskyv1-linux.dat cskyv1-linux.c
+cskyv2-linux.c : $(srcdir)/../regformats/cskyv2-linux.dat $(regdat_sh)
+	$(SHELL) $(regdat_sh) $(srcdir)/../regformats/cskyv2-linux.dat cskyv2-linux.c
 nios2-linux.c :	$(srcdir)/../regformats/nios2-linux.dat $(regdat_sh)
 	$(SHELL) $(regdat_sh) $(srcdir)/../regformats/nios2-linux.dat nios2-linux.c
 powerpc-32.c : $(srcdir)/../regformats/rs6000/powerpc-32.dat $(regdat_sh)

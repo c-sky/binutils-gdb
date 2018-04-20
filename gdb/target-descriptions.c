@@ -35,6 +35,12 @@
 #include "hashtab.h"
 #include "inferior.h"
 
+#ifdef CSKYGDB_CONFIG
+#include "user-regs.h"
+#include "csky-tdep.h"
+#include "opcode/csky.h"
+#endif
+
 /* Types.  */
 
 typedef struct property
@@ -81,6 +87,17 @@ typedef struct tdesc_reg
 
   /* The target-described type corresponding to TYPE, if found.  */
   struct tdesc_type *tdesc_type;
+
+#ifdef CSKYGDB_CONFIG
+  /* Reg numbers of a pseudo register, it will be a string, every regnum
+     should be seperated with ','.  */
+  char *regs;
+
+  /* The start address of a pseudo register that its value is a memory,
+     the length is decided by type,. If type is null, length will be
+     decided by bitsize.  */
+  long addr;
+#endif /* CSKYGDB_CONFIG */
 } *tdesc_reg_p;
 DEF_VEC_P(tdesc_reg_p);
 
@@ -194,6 +211,11 @@ struct target_desc
 
   /* The features associated with this target.  */
   VEC(tdesc_feature_p) *features;
+
+#ifdef CSKYGDB_CONFIG
+  /* The verison of the target in the xml.  */
+  float version;
+#endif
 };
 
 /* Per-architecture data associated with a target description.  The
@@ -223,6 +245,28 @@ struct tdesc_arch_data
   gdbarch_register_type_ftype *pseudo_register_type;
   gdbarch_register_reggroup_p_ftype *pseudo_register_reggroup_p;
 };
+
+
+#ifdef CSKYGDB_CONFIG
+/* For csky pseudo reg.  */
+
+struct pseudo_reg
+{
+  int is_mem;
+  struct tdesc_arch_reg m_reg;
+  struct pseudo_reg_children *child;
+  struct pseudo_reg *next;
+};
+
+/* For pseudo reg name check.  */
+
+struct pseudo_same_name_list
+{
+   char *name;
+   struct pseudo_same_name_list *next;
+};
+#endif
+
 
 /* Info about an inferior's target description.  There's one of these
    for each inferior.  */
@@ -1239,6 +1283,7 @@ tdesc_use_registers (struct gdbarch *gdbarch,
     if (arch_reg->reg)
       htab_remove_elt (reg_hash, arch_reg->reg);
 
+#ifndef CSKYGDB_CONFIG
   /* Assign numbers to the remaining registers and add them to the
      list of registers.  The new numbers are always above gdbarch_num_regs.
      Iterate over the features, not the hash table, so that the order
@@ -1259,6 +1304,7 @@ tdesc_use_registers (struct gdbarch *gdbarch,
 	  VEC_safe_push (tdesc_arch_reg, data->arch_regs, &new_arch_reg);
 	  num_regs++;
 	}
+#endif /* not CSKYGDB_CONFIG */
 
   htab_delete (reg_hash);
 
@@ -2021,3 +2067,815 @@ GDB will read the description from the target."),
 Print the current target description as a C source file."),
 	   &maintenanceprintlist);
 }
+
+#ifdef CSKYGDB_CONFIG
+/* ******** Just for CSKY **********  */
+/* Return a feature found by count, if find,return the feature; if not,
+   return NULL  */
+
+const struct tdesc_feature *
+csky_tdesc_find_feature (const struct target_desc *target_desc,
+                         const int count)
+{
+  struct tdesc_feature *feature;
+  VEC_iterate (tdesc_feature_p, target_desc->features, count, feature);
+  return feature;
+}
+
+/* Return max regnum in data  */
+int
+csky_get_max_regnum_from_tdesc_data (const struct tdesc_arch_data *data)
+{
+  if (data == NULL)
+    return 0;
+  return VEC_length (tdesc_arch_reg, data->arch_regs);
+}
+
+/* Check for version 1.0, will not support some regnum  */
+static int
+csky_regnum_check (struct tdesc_reg *reg, float version)
+{
+#ifndef CSKYGDB_CONFIG_ABIV2
+  if ((reg->target_regnum < 0) || (reg->target_regnum > 159))
+    return -1;
+  else if ((reg->target_regnum >= 16) && (reg->target_regnum <=19))
+    return -1;
+  else if ((reg->target_regnum == 22) || (reg->target_regnum == 23)
+          || (reg->target_regnum == 56) || (reg->target_regnum == 57)
+          || (reg->target_regnum == 120))
+    return -1;
+  else
+    return 0;
+#else /* CSKYGDB_CONFIG_ABIV2 */
+  if ((reg->target_regnum < 0) || (reg->target_regnum > 1171))
+    return -1;
+  else if ((reg->target_regnum >= 32) && (reg->target_regnum <=35))
+    return -1;
+  else if ((reg->target_regnum == 38)  || (reg->target_regnum == 39)
+           || (reg->target_regnum == 124) || (reg->target_regnum == 125)
+           || (reg->target_regnum == 126) || (reg->target_regnum == 137)
+           || (reg->target_regnum == 138) || (reg->target_regnum == 139)
+           || (reg->target_regnum == 175) || (reg->target_regnum == 203))
+    return -1;
+  else
+    return 0;
+#endif /* CSKYGDB_CONFIG_ABIV2 */
+}
+
+static int
+csky_tdesc_regs_bitsize_check (struct tdesc_reg *reg, float version)
+{
+#ifndef CSKYGDB_CONFIG_ABIV2
+  if (reg->bitsize != 32)
+    return -1;
+#else /* CSKYGDB_CONFIG_ABIV2 */
+  /* Float register is 64 bits  */
+  if ((reg->target_regnum >= 40) && (reg->target_regnum <= 55))
+    {
+      if (reg->bitsize != 64)
+        return -1;
+    }
+  /* Vector regitser is 128 bits  */
+  else if ((reg->target_regnum >= 56) && (reg->target_regnum <= 71))
+    {
+      if (reg->bitsize != 128)
+        return -1;
+    }
+  /* Default, register is 32 bits  */
+  else
+    {
+      if (reg->bitsize != 32)
+        return -1;
+    }
+#endif
+  return 0;
+}
+
+static int
+csky_tdesc_regs_name_group_ilegal_check (char *str)
+{
+  int i, count;
+  count = strlen (str);
+  if (count == 0)
+    return -1;
+  for (i = 0;i < count; i++)
+    {
+      if (((str[i] >= '0') && (str[i] <= '9'))
+          || ((str[i] >= 'A') && (str[i] <= 'Z'))
+          || ((str[i] >= 'a') && (str[i] <= 'z'))
+          || (str[i] == '_'))
+        continue;
+     else
+       {
+         return -1;
+       }
+    }
+  return 0;
+}
+
+static void
+csky_tdesc_reg_name_exists_check (struct tdesc_arch_data *data,
+                                  struct tdesc_reg *reg,
+                                  int is_pseudo_check)
+{
+  int i, count;
+  count = VEC_length (tdesc_arch_reg, data->arch_regs);
+  for (i = 0;i < count; i++)
+    {
+      struct tdesc_arch_reg *tmp;
+      tmp = VEC_index (tdesc_arch_reg, data->arch_regs, i);
+      if ((tmp == NULL) || (tmp->reg == NULL))
+        continue;
+      if (!strcmp ((tmp->reg)->name, reg->name))
+        {
+          if (is_pseudo_check)
+            warning (_("reg with regnum '%ld' and a pseudo reg have"
+                       " the same name \"%s\", please check."),
+                       (tmp->reg)->target_regnum,
+                       reg->name);
+          else
+            warning (_("regs with regnum '%ld' and '%ld' have the same"
+                       " name \"%s\", please check."),
+                       (tmp->reg)->target_regnum,
+                       reg->target_regnum,
+                       reg->name);
+        }
+    }
+}
+
+#define DEFAULT_REG_NAME_LENGTH 15
+
+static int
+csky_tdesc_reg_name_length_check (struct tdesc_reg *reg)
+{
+  if (reg->name == NULL)
+    return -1;
+  if (strlen (reg->name) > DEFAULT_REG_NAME_LENGTH)
+    return -1;
+  return 0;
+}
+
+int
+csky_tdesc_numbered_register (const struct tdesc_feature *feature,
+                              struct tdesc_arch_data *data,
+                              struct reggroup_el **m_reggroup_list,
+                              struct user_reg_list **m_user_reg_list,
+                              const struct target_desc *tdesc)
+{
+  int ixr;
+  int is_pseudo_check = 0;
+  struct tdesc_reg *reg;
+  float version = tdesc->version;
+  for (ixr = 0;
+       VEC_iterate (tdesc_reg_p, feature->registers, ixr, reg);
+       ixr++)
+    {
+      struct tdesc_arch_reg arch_reg = {0};
+      struct tdesc_arch_reg *tmp;
+      if ((ixr == 0) && (reg == NULL))
+        return -1;
+      if (csky_regnum_check (reg, version) < 0)
+        {
+          warning (_("the reg named \"%s\" has unspported regnum %ld,"
+                     " please check."), reg->name, reg->target_regnum);
+          return -1;
+        }
+      if (csky_tdesc_reg_name_length_check(reg) < 0)
+        {
+          warning (_("the reg named \"%s\" has unspported length of name,"
+                     " name's length should be less than %d."),
+                      reg->name, DEFAULT_REG_NAME_LENGTH);
+          return -1;
+        }
+      /* Make sure the vector includes a REGNO'th element.  */
+      while (reg->target_regnum >= VEC_length (tdesc_arch_reg,
+                                               data->arch_regs))
+        VEC_safe_push (tdesc_arch_reg, data->arch_regs, &arch_reg);
+
+      /* Check whether reg reg->target_regnum exists, if ture,
+         add reg to user_reg_list.  */
+      tmp = VEC_index (tdesc_arch_reg, data->arch_regs, reg->target_regnum);
+      if (tmp->reg != NULL)
+        {
+          csky_user_reg_list_add (m_user_reg_list, reg->name,
+                                  reg->target_regnum);
+          continue;
+        }
+      /* Check bitesize.  */
+      if (csky_tdesc_regs_bitsize_check (reg, version))
+        warning (_("the reg named \"%s\" has unsupported bitsize %d,"
+                   " please check."), reg->name, reg->bitsize);
+      /* Check name ilegal.  */
+     if (csky_tdesc_regs_name_group_ilegal_check (reg->name))
+       {
+         printf_unfiltered (_("error reg name \"%s\" exists, all characters"
+                              " supported are in \"0-9, a/A-z/Z, _\".\n"),
+                              reg->name);
+         return -1;
+       }
+      /* Check group ilegal.  */
+      if (reg->group && csky_tdesc_regs_name_group_ilegal_check (reg->group))
+        {
+          printf_unfiltered (_("reg named \"%s\" has an error group \"%s\","
+                               " all characters supported are in \"0-9,"
+                               " a/A-z/Z, _\".\n"), reg->name, reg->group);
+          return -1;
+        }
+      /* Check name exists.  */
+      csky_tdesc_reg_name_exists_check (data, reg, is_pseudo_check);
+      /* Add reg to data.  */
+      arch_reg.reg = reg;
+      csky_reggroup_name_add (m_reggroup_list, reg->group);
+      VEC_replace (tdesc_arch_reg, data->arch_regs, reg->target_regnum,
+                   &arch_reg);
+    }
+  return 0;
+}
+
+#define CSKY_MAX_REGNUM_LENGTH 6
+
+/* Spilt regs into regnums and save them into list  */
+
+static int
+csky_add_children_regs (struct pseudo_reg_children **list,
+                        char *str,
+                        char *regname)
+{
+  int len, regnum, end;
+  char *p, *piece, *any;
+  any = NULL;
+  end = 0;
+
+  while(!end)
+    {
+      p = strstr (str, ",");
+      if (p != NULL)
+        {
+          len = p - str;
+        }
+      else
+        {
+          len = strlen (str);
+          end = 1;
+        }
+      piece = (char *) malloc (sizeof (char) * (len+1));
+      memset (piece, '\0', (len+1));
+      strncpy (piece, str, len);
+      str = p + 1;
+      if (len > CSKY_MAX_REGNUM_LENGTH) /* Regnum length  */
+        {
+          warning(_("a pseudo named \"%s\" has a error children regnum %s,"
+                    " please check."), regname, piece);
+          return -1;
+        }
+      if ((piece[0] == '0') && (piece[1] == 'x'))
+        regnum = strtol (piece, &any, 16);
+      else
+        regnum = atol(piece);
+      if (*list == NULL)
+        {
+          (*list) = (struct pseudo_reg_children *) malloc (
+                  sizeof (struct pseudo_reg_children));
+          (*list)->regnum = regnum;
+          (*list)->next = NULL;
+        }
+      else
+        {
+          struct pseudo_reg_children *prc_tmp, *tmp;
+          prc_tmp = *list;
+          while (prc_tmp->next != NULL)
+            prc_tmp = prc_tmp->next;
+          tmp = (struct pseudo_reg_children *) malloc (
+              sizeof (struct pseudo_reg_children));
+          tmp->regnum = regnum;
+          tmp->next = NULL;
+          prc_tmp->next = tmp;
+        }
+    }
+  return 0;
+}
+
+/* All the regnums get from regs should exist in data.  */
+
+static int
+csky_pseudo_reg_regs_check (struct pseudo_reg_children *prc,
+                            struct tdesc_arch_data *data)
+{
+  struct pseudo_reg_children *prc_tmp;
+  int reg_count = VEC_length (tdesc_arch_reg, data->arch_regs);
+  prc_tmp = prc;
+  while (prc_tmp)
+    {
+      struct tdesc_arch_reg *arch_reg = NULL;
+      if (prc_tmp->regnum < reg_count)
+        arch_reg = VEC_index (tdesc_arch_reg, data->arch_regs, prc_tmp->regnum);
+      if (arch_reg == NULL || arch_reg->reg == NULL)
+        {
+          return -1;
+        }
+      prc_tmp = prc_tmp->next;
+    }
+  return 0;
+}
+
+static void
+pseudo_sname_list_add (struct pseudo_same_name_list **sname_list,
+                       char *name)
+{
+  struct pseudo_same_name_list *tmp, *tmp_new;
+  if (*sname_list == NULL)
+    {
+      *sname_list = (struct pseudo_same_name_list *) malloc (
+                  sizeof (struct pseudo_same_name_list));
+      memset (*sname_list, 0, sizeof (struct pseudo_same_name_list));
+      (*sname_list)->name = xstrdup (name);
+      (*sname_list)->next = NULL;
+    }
+  tmp = *sname_list;
+  tmp_new = tmp;
+  while (tmp)
+    {
+      if (!strcmp (tmp->name, name))
+        {
+          return;
+        }
+      tmp_new = tmp;
+      tmp = tmp->next;
+    }
+  tmp_new->next = (struct pseudo_same_name_list *) malloc (
+                sizeof (struct pseudo_same_name_list));
+  memset (tmp_new->next, 0, sizeof (struct pseudo_same_name_list));
+  tmp_new->next->name = xstrdup (name);
+  tmp_new->next->next = NULL;
+}
+
+/* Check whether there are regs with the same name.  */
+
+void
+csky_tdesc_pseudo_reg_name_exists_check (struct pseudo_reg *m_pseudo_reg_list,
+                                         struct tdesc_arch_data *data)
+{
+   struct pseudo_reg *pr_tmp1, *pr_tmp2;
+   struct pseudo_same_name_list *sname_list = NULL;
+   int is_pseudo_check = 1;
+
+   pr_tmp1 = pr_tmp2 = m_pseudo_reg_list;
+   while (pr_tmp1)
+     {
+       csky_tdesc_reg_name_exists_check (data, (pr_tmp1->m_reg).reg,
+                                         is_pseudo_check);
+       while (pr_tmp2)
+         {
+           if (!strcmp ((pr_tmp1->m_reg).reg->name,
+                        (pr_tmp2->m_reg).reg->name))
+             {
+               pseudo_sname_list_add (&sname_list, (pr_tmp1->m_reg).reg->name);
+             }
+           pr_tmp2 = pr_tmp2->next;
+         }
+       pr_tmp2 = pr_tmp1;
+       pr_tmp1 = pr_tmp1->next;
+     }
+   if (sname_list)
+     {
+       while (sname_list)
+         {
+           int count = 0;
+           struct pseudo_same_name_list *sname_tmp;
+           pr_tmp1 = m_pseudo_reg_list;
+           while (pr_tmp1)
+             {
+               if (!strcmp ((pr_tmp1->m_reg).reg->name, sname_list->name))
+                 {
+                   count ++;
+                 }
+               pr_tmp1 = pr_tmp1->next;
+             }
+           if (count > 1)
+             warning (_("%d pseudo regs have the same name \"%s\","
+                        " please check."), count, sname_list->name);
+           sname_tmp = sname_list;
+           sname_list = sname_list->next;
+           free(sname_tmp);
+         }
+     }
+}
+
+/* Get pseudo regs msg from feature which is named "org.gnu.csky.pseudo".  */
+int
+csky_tdesc_get_pseudo_regs (const struct tdesc_feature *feature,
+                            struct tdesc_arch_data *data,
+                            struct pseudo_reg **m_pseudo_reg_list,
+                            struct reggroup_el **m_reggroup_list,
+                            const struct target_desc *tdesc)
+{
+  int ixr;
+  struct tdesc_reg *reg;
+  int valid_p;
+  int is_mem = 0;
+  int nums_pseudo_regs = 0;
+  float version = tdesc->version;
+
+  *m_pseudo_reg_list = NULL;
+  for (ixr = 0;
+       VEC_iterate (tdesc_reg_p, feature->registers, ixr, reg);
+       ixr++)
+    {
+      struct pseudo_reg_children *prc_tmp = NULL;
+      if ((ixr == 0) && (reg == NULL))
+        return -1;
+      if (csky_tdesc_reg_name_length_check (reg) < 0)
+        {
+          warning (_("the pseudo reg named \"%s\" has unspported length of"
+                     " name, name's length should be less than %d."),
+                     reg->name, DEFAULT_REG_NAME_LENGTH);
+          return -1;
+        }
+      if (reg->regs)
+        {
+          is_mem = 0;
+          valid_p = csky_add_children_regs (&prc_tmp, reg->regs, reg->name);
+          if (valid_p < 0)
+            return -1;
+          valid_p = csky_pseudo_reg_regs_check (prc_tmp, data);
+          if (valid_p < 0)
+            {
+              warning (_("a pseudo reg named \"%s\" consists of regs '%s',"
+                         " some of regs haven't been discribed before."),
+                         reg->name, reg->regs);
+              return -1;
+            }
+        }
+      else
+        {
+          if (reg->addr == 1)
+            {
+              warning (_("a pseudo reg named \"%s\" has no attribute of"
+                         " regs or addr, ignored it."), reg->name);
+              continue;
+            }
+          else
+            {
+              if (reg->bitsize % 8)
+                {
+                  warning (_("a pseudo reg named \"%s\" has wrong bitsize"
+                             " of %d, please check."),
+                             reg->name, reg->bitsize);
+                  return -1;
+                }
+              is_mem = 1;
+            }
+        }
+      /* Check if name ilegal.  */
+      if (csky_tdesc_regs_name_group_ilegal_check (reg->name))
+        {
+          printf_unfiltered (_("error reg name \"%s\" exists, all characters"
+                               " supported are in \"0-9, a/A-z/Z, _\".\n"),
+                               reg->name);
+          return -1;
+        }
+      /* Check if group ilegal.  */
+      if (reg->group && csky_tdesc_regs_name_group_ilegal_check (reg->group))
+        {
+          printf_unfiltered(_("reg named \"%s\" has an error group \"%s\","
+                              " all characters supported are in \"0-9,"
+                              " a/A-z/Z, _\".\n"), reg->name, reg->group);
+          return -1;
+        }
+      csky_reggroup_name_add (m_reggroup_list, reg->group);
+      if (*m_pseudo_reg_list == NULL)
+        {
+          (*m_pseudo_reg_list) = (struct pseudo_reg *) malloc (
+                               sizeof (struct pseudo_reg));
+          memset (*m_pseudo_reg_list, 0, sizeof (struct pseudo_reg));
+          (*m_pseudo_reg_list)->is_mem = is_mem;
+          (*m_pseudo_reg_list)->m_reg.reg = reg;
+          (*m_pseudo_reg_list)->next = NULL;
+          if (is_mem)
+            (*m_pseudo_reg_list)->child = NULL;
+          else
+            (*m_pseudo_reg_list)->child = prc_tmp;
+          nums_pseudo_regs++;
+        }
+      else
+        {
+          struct pseudo_reg *pr_tmp, *tmp;
+          pr_tmp = *m_pseudo_reg_list;
+          while (pr_tmp->next)
+            pr_tmp = pr_tmp->next;
+          tmp = (struct pseudo_reg *) malloc (sizeof (struct pseudo_reg));
+          memset(tmp, 0, sizeof (struct pseudo_reg));
+          tmp->is_mem = is_mem;
+          tmp->m_reg.reg = reg;
+          tmp->next = NULL;
+          if (is_mem)
+            tmp->child = NULL;
+          else
+            tmp->child = prc_tmp;
+          pr_tmp->next = tmp;
+          nums_pseudo_regs++;
+        }
+    }
+  return nums_pseudo_regs;
+}
+
+/* Free m_pseudo_reg_list.  */
+
+void
+csky_tdesc_free_pseudo_reg_list (struct pseudo_reg **m_pseudo_reg_list)
+{
+  if (*m_pseudo_reg_list == NULL)
+    return;
+  else
+    {
+      while (*m_pseudo_reg_list)
+        {
+          struct pseudo_reg *pr_tmp;
+          pr_tmp = *m_pseudo_reg_list;
+          if (pr_tmp->child != NULL)
+            {
+              while (pr_tmp->child)
+                {
+                  struct pseudo_reg_children *prc_tmp;
+                  prc_tmp = pr_tmp->child;
+                  pr_tmp->child = pr_tmp->child->next;
+                  free(prc_tmp);
+                }
+            }
+          *m_pseudo_reg_list  = (*m_pseudo_reg_list)->next;
+          free(pr_tmp);
+        }
+    }
+}
+
+/* Return a pseudo_reg from m_pseudo_reg_list find by regnum.  */
+
+static struct pseudo_reg *
+csky_tdesc_get_pseudo_reg (struct gdbarch *gdbarch,
+                           struct pseudo_reg *m_pseudo_reg_list,
+                           int regnum)
+{
+  struct pseudo_reg *pr_tmp;
+  int num_regs = gdbarch_num_regs (gdbarch);
+  int num_pseudo_regs = gdbarch_num_pseudo_regs (gdbarch);
+  int count = regnum - num_regs;
+  if (regnum < 0)
+    return NULL;
+  if ((count >= num_pseudo_regs) || (regnum < num_regs))
+    return NULL;
+  pr_tmp = m_pseudo_reg_list;
+  while ((count) && pr_tmp)
+    {
+      pr_tmp = pr_tmp->next;
+      count --;
+    }
+  return pr_tmp;
+}
+
+/* Return is_mem of pseudo_reg of m_pseudo_reg_list find by regnum
+   if regnum does not exist, return -1; or return is_mem.  */
+
+int
+csky_tdesc_get_ismem (struct gdbarch *gdbarch,
+                      struct pseudo_reg *m_pseudo_reg_list,
+                      int regnum)
+{
+  struct pseudo_reg *pr_tmp;
+  pr_tmp = csky_tdesc_get_pseudo_reg (gdbarch, m_pseudo_reg_list, regnum);
+  if (pr_tmp)
+    return pr_tmp->is_mem;
+  return -1;
+}
+
+/* Return addr of pseudo_reg from m_pseudo_reg_list find by regnum.  */
+
+long
+csky_tdesc_get_addr (struct gdbarch *gdbarch,
+                     struct pseudo_reg *m_pseudo_reg_list,
+                     int regnum)
+{
+  struct pseudo_reg *pr_tmp;
+  pr_tmp = csky_tdesc_get_pseudo_reg (gdbarch, m_pseudo_reg_list, regnum);
+  if (pr_tmp)
+    return pr_tmp->m_reg.reg->addr;
+  return -1;
+}
+
+/* Return struct pseudo_reg_children of pseudo_reg from m_pseudo_reg_list
+   find by regnum.  */
+
+struct pseudo_reg_children *
+csky_tdesc_get_regs_children (struct gdbarch *gdbarch,
+                              struct pseudo_reg *m_pseudo_reg_list,
+                              int regnum)
+{
+  struct pseudo_reg *pr_tmp;
+  pr_tmp = csky_tdesc_get_pseudo_reg (gdbarch, m_pseudo_reg_list, regnum);
+  if (pr_tmp)
+    return pr_tmp->child;
+  return NULL;
+}
+
+/* Check whether a reg with regnum is regno exists in data.  */
+
+int
+csky_tdesc_register_exists (struct tdesc_arch_data *data, int regno)
+{
+   struct tdesc_arch_reg *arch_reg = NULL;
+   if (regno < VEC_length (tdesc_arch_reg, data->arch_regs))
+     arch_reg = VEC_index (tdesc_arch_reg, data->arch_regs, regno);
+   if (arch_reg && arch_reg->reg)
+     return 1;
+   return 0;
+}
+
+/* Return csky pseudo reg's name.  */
+
+const char *
+csky_tdesc_pseudo_register_name (struct gdbarch *gdbarch,
+                                 int regnum,
+                                 struct pseudo_reg *m_pseudo_reg_list)
+{
+  struct pseudo_reg *pr_tmp;
+  pr_tmp = csky_tdesc_get_pseudo_reg (gdbarch, m_pseudo_reg_list, regnum);
+  if (pr_tmp && pr_tmp->m_reg.reg)
+    return pr_tmp->m_reg.reg->name;
+  return NULL;
+}
+
+#ifndef CSKYGDB_CONFIG_ABIV2
+/* Get version of csky instruction set.  */
+
+static int
+csky_tdesc_get_insn_version (struct gdbarch * gdbarch)
+{
+  int mach = gdbarch_bfd_arch_info (gdbarch)->mach;
+  if (((mach & CSKY_ARCH_MASK) == CSKY_ARCH_510)
+      || ((mach & CSKY_ARCH_MASK) == CSKY_ARCH_610)
+      || (mach == 0))
+  {
+    return CSKY_INSN_V1;
+  }
+
+  return CSKY_INSN_V2P;
+}
+#endif /* not CSKYGDB_CONFIG_ABIV2  */
+
+/* Csky tdesc register group p, decided by reg->group written in the xml.  */
+
+int
+csky_tdesc_register_reggroup_p (struct gdbarch *gdbarch,
+                                int regno,
+                                struct reggroup *reggroup,
+                                struct pseudo_reg *m_pseudo_reg_list)
+{
+  int num_regs = gdbarch_num_regs (gdbarch);
+  int num_pseudo_regs = gdbarch_num_pseudo_regs (gdbarch);
+  if (regno < num_regs)
+    {
+      struct tdesc_reg *reg = tdesc_find_register (gdbarch, regno);
+      if (reg != NULL)
+        {
+          if (reggroup == all_reggroup)
+            return 1;
+          if (regno <gdbarch_num_regs(gdbarch))
+            {
+              if (reggroup == save_reggroup || reggroup == restore_reggroup)
+                return 1;
+            }
+#ifndef CSKYGDB_CONFIG_ABIV2   /* FOR ABIV1 */
+          if (csky_tdesc_get_insn_version(gdbarch) == CSKY_INSN_V2P)
+            {
+              if (((regno >= CSKY_R0_REGNUM) && (regno <= CSKY_R0_REGNUM + 31))
+                  && (reggroup == general_reggroup))
+                return 1;
+            }
+          else /* CSKY_INSN_V1  */
+            {
+              if (((regno >= CSKY_R0_REGNUM) && (regno <= CSKY_R0_REGNUM + 15))
+                 && (reggroup == general_reggroup))
+               return 1;
+            }
+#else   /* CSKYGDB_CONFIG_ABIV2 */
+          if (((regno >= CSKY_R0_REGNUM) && (regno <= CSKY_R0_REGNUM + 31))
+              && (reggroup == general_reggroup))
+            return 1;
+#endif /* CSKYGDB_CONFIG_ABIV2 */
+          if ((reg->group != NULL) && (!strcmp (reggroup->name, reg->group)))
+            return 1;
+        }
+    }
+  else if ((regno >= num_regs) && (regno < (num_regs+num_pseudo_regs)))
+    {
+      struct pseudo_reg *pr_tmp;
+      pr_tmp = csky_tdesc_get_pseudo_reg (gdbarch, m_pseudo_reg_list, regno);
+      if ((pr_tmp) && pr_tmp->m_reg.reg)
+        {
+          if (reggroup == all_reggroup)
+            return 1;
+          if ((pr_tmp->m_reg.reg->group != NULL)
+              && (!strcmp (reggroup->name, pr_tmp->m_reg.reg->group)))
+            return 1;
+        }
+    }
+  return 0;
+}
+
+/* Set tdesc_data version from xml.  */
+
+void
+csky_set_target_version (struct target_desc *tdesc, const char *version)
+{
+  tdesc->version = atof (version);
+}
+
+/* Return for csky pseudo register.  */
+
+struct type *
+csky_tdesc_pseudo_register_type (struct gdbarch *gdbarch,
+                                 int regno,
+                                 struct pseudo_reg *m_pseudo_reg_list)
+{
+  struct pseudo_reg *pr;
+  pr = csky_tdesc_get_pseudo_reg(gdbarch, m_pseudo_reg_list, regno);
+  if(pr == NULL)
+     return NULL;
+  if (pr->m_reg.type == NULL)
+    {
+      /* First check for a predefined or target defined type.  */
+      if (pr->m_reg.reg->tdesc_type)
+        pr->m_reg.type = tdesc_gdb_type (gdbarch, pr->m_reg.reg->tdesc_type);
+
+      /* Next try size-sensitive type shortcuts.  */
+      else if (strcmp (pr->m_reg.reg->type, "float") == 0)
+        {
+          if (pr->m_reg.reg->bitsize == gdbarch_float_bit (gdbarch))
+            pr->m_reg.type = builtin_type (gdbarch)->builtin_float;
+          else if (pr->m_reg.reg->bitsize == gdbarch_double_bit (gdbarch))
+            pr->m_reg.type = builtin_type (gdbarch)->builtin_double;
+          else if (pr->m_reg.reg->bitsize == gdbarch_long_double_bit (gdbarch))
+            pr->m_reg.type = builtin_type (gdbarch)->builtin_long_double;
+          else
+            {
+              warning (_("register \"%s\" has an unsupported size (%d bits)"),
+                       pr->m_reg.reg->name, pr->m_reg.reg->bitsize);
+              pr->m_reg.type = builtin_type (gdbarch)->builtin_double;
+            }
+        }
+      else if (strcmp ( pr->m_reg.reg->type, "int") == 0)
+        {
+          if (pr->m_reg.reg->bitsize == gdbarch_long_bit (gdbarch))
+            pr->m_reg.type = builtin_type (gdbarch)->builtin_long;
+          else if (pr->m_reg.reg->bitsize == TARGET_CHAR_BIT)
+            pr->m_reg.type = builtin_type (gdbarch)->builtin_char;
+          else if (pr->m_reg.reg->bitsize == gdbarch_short_bit (gdbarch))
+            pr->m_reg.type = builtin_type (gdbarch)->builtin_short;
+          else if (pr->m_reg.reg->bitsize == gdbarch_int_bit (gdbarch))
+            pr->m_reg.type = builtin_type (gdbarch)->builtin_int;
+          else if (pr->m_reg.reg->bitsize == gdbarch_long_long_bit (gdbarch))
+            pr->m_reg.type = builtin_type (gdbarch)->builtin_long_long;
+          else if (pr->m_reg.reg->bitsize == gdbarch_ptr_bit (gdbarch))
+          /* A bit desperate by this point...  */
+            pr->m_reg.type = builtin_type (gdbarch)->builtin_data_ptr;
+          else
+            {
+              warning (_("register \"%s\" has an unsupported size (%d bits)"),
+                        pr->m_reg.reg->name,  pr->m_reg.reg->bitsize);
+              pr->m_reg.type = builtin_type (gdbarch)->builtin_long;
+            }
+        }
+      if (pr->m_reg.type == NULL)
+        internal_error (__FILE__, __LINE__,
+                        "register \"%s\" has an unknown type \"%s\"",
+                        pr->m_reg.reg->name, pr->m_reg.reg->type);
+  }
+  return pr->m_reg.type;
+}
+
+/* Create a reg add csky pseudo attributes "regs" and "addr".  */
+
+void
+csky_tdesc_create_reg (struct tdesc_feature *feature, const char *name,
+                       int regnum, int save_restore, const char *group,
+                       int bitsize, const char *type,const char *regs,
+                       int addr)
+{
+  struct tdesc_reg *reg = XCNEW (struct tdesc_reg);
+
+  reg->name = xstrdup (name);
+  reg->target_regnum = regnum;
+  reg->save_restore = save_restore;
+  reg->group = group ? xstrdup (group) : NULL;
+  reg->bitsize = bitsize;
+  reg->type = type ? xstrdup (type) : xstrdup ("<unknown>");
+  reg->regs = regs ? xstrdup (regs) : NULL;
+  reg->addr = addr;
+
+  /* If the register's type is target-defined, look it up now.  We may not
+     have easy access to the containing feature when we want it later.  */
+  reg->tdesc_type = tdesc_named_type (feature, reg->type);
+
+  VEC_safe_push (tdesc_reg_p, feature->registers, reg);
+}
+
+#endif /* CSKYGDB_CONFIG */

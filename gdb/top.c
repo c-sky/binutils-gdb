@@ -70,6 +70,10 @@
 #include "tracepoint.h"
 #include "inf-loop.h"
 
+#ifdef CSKYGDB_CONFIG
+#include "csky-tdep.h"
+#endif
+
 #if defined(TUI)
 # include "tui/tui.h"
 #endif

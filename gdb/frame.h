@@ -840,4 +840,11 @@ extern struct frame_info *skip_tailcall_frames (struct frame_info *frame);
 
 extern struct frame_info *skip_unwritable_frames (struct frame_info *frame);
 
+#ifdef CSKYGDB_CONFIG
+/* For csky: only read registers in the selected register list
+   for debug speed.  */
+
+extern struct regcache *frame_save_as_regcache_reglist (struct frame_info *this_frame);
+#endif /* CSKYGDB_CONFIG */
+
 #endif /* !defined (FRAME_H)  */

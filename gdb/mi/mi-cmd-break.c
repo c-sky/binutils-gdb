@@ -185,12 +185,18 @@ mi_cmd_break_insert_1 (int dprintf, char *command, char **argv, int argc)
   int is_explicit = 0;
   struct explicit_location explicit_loc;
   char *extra_string = NULL;
+#ifdef CSKYGDB_CONFIG
+  int cskyauto = 0;
+#endif
 
   enum opt
     {
       HARDWARE_OPT, TEMP_OPT, CONDITION_OPT,
       IGNORE_COUNT_OPT, THREAD_OPT, PENDING_OPT, DISABLE_OPT,
       TRACEPOINT_OPT,
+#ifdef CSKYGDB_CONFIG
+      CSKYAUTO_OPT,
+#endif
       EXPLICIT_SOURCE_OPT, EXPLICIT_FUNC_OPT,
       EXPLICIT_LABEL_OPT, EXPLICIT_LINE_OPT
     };
@@ -208,6 +214,9 @@ mi_cmd_break_insert_1 (int dprintf, char *command, char **argv, int argc)
     {"-function", EXPLICIT_FUNC_OPT, 1},
     {"-label", EXPLICIT_LABEL_OPT, 1},
     {"-line", EXPLICIT_LINE_OPT, 1},
+#ifdef CSKYGDB_CONFIG
+    {"u", CSKYAUTO_OPT, 0},
+#endif
     { 0, 0, 0 }
   };
 
@@ -266,6 +275,11 @@ mi_cmd_break_insert_1 (int dprintf, char *command, char **argv, int argc)
 	  is_explicit = 1;
 	  explicit_loc.line_offset = linespec_parse_line_offset (oarg);
 	  break;
+#ifdef CSKYGDB_CONFIG
+        case CSKYAUTO_OPT:
+          cskyauto = 1;
+	  break;
+#endif
 	}
     }
 
@@ -322,7 +336,12 @@ mi_cmd_break_insert_1 (int dprintf, char *command, char **argv, int argc)
     }
   else
     {
+#ifndef CSKYGDB_CONFIG
       type_wanted = hardware ? bp_hardware_breakpoint : bp_breakpoint;
+#else /* CSKYGDB_CONFIG */
+      type_wanted = hardware ? bp_hardware_breakpoint
+                    : (cskyauto ? bp_auto_breakpoint : bp_breakpoint);
+#endif /* CSKYGDB_CONFIG */
       ops = &bkpt_breakpoint_ops;
     }
 

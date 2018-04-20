@@ -29,11 +29,13 @@
 
 /* Individual register groups.  */
 
+#ifndef CSKYGDB_CONFIG
 struct reggroup
 {
   const char *name;
   enum reggroup_type type;
 };
+#endif /* not CSKYGDB_CONFIG */
 
 struct reggroup *
 reggroup_new (const char *name, enum reggroup_type type)
@@ -59,6 +61,8 @@ reggroup_type (struct reggroup *group)
   return group->type;
 }
 
+
+#ifndef CSKYGDB_CONFIG
 /* A linked list of groups for the given architecture.  */
 
 struct reggroup_el
@@ -66,6 +70,7 @@ struct reggroup_el
   struct reggroup *group;
   struct reggroup_el *next;
 };
+#endif /* not CSKYGDB_CONFIG */
 
 struct reggroups
 {
@@ -321,3 +326,40 @@ Takes an optional file parameter."),
 	   &maintenanceprintlist);
 
 }
+
+#ifdef CSKYGDB_CONFIG
+/* For csky reggroup add. */
+
+void
+csky_reggroup_name_add (struct reggroup_el **list, const char *name)
+{
+  if (name == NULL)
+    return;
+  else
+    {
+      struct reggroup_el *tmp, *tmp_prev;
+      tmp = *list;
+      tmp_prev = tmp;
+      while(tmp)
+        {
+          if (!strcmp(tmp->group->name, name))
+            return;
+          tmp_prev = tmp;
+          tmp = tmp->next;
+        }
+      if (*list == NULL) /* If the head of list is NULL.  */
+        {
+          (*list) = (struct reggroup_el *)malloc(sizeof(struct reggroup_el));
+          (*list)->group = reggroup_new (name, USER_REGGROUP);
+          (*list)->next = NULL;
+        }
+      else
+        {
+          tmp = (struct reggroup_el *)malloc(sizeof(struct reggroup_el));
+          tmp->group = reggroup_new (name, USER_REGGROUP);
+          tmp->next = NULL;
+          tmp_prev->next = tmp;
+       }
+    }
+}
+#endif /* CSKYGDB_CONFIG */

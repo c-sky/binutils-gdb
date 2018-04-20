@@ -380,7 +380,8 @@ mips*-*-*)
 
 csky*-*-*)
         # Target: CSKY
-        gdb_target_obs="csky-tdep.o solib-svr4.o remote-csky.o"
+        gdb_target_obs="csky-tdep.o solib-svr4.o remote-csky.o \
+                        csky-rtos-common.o csky-rtos.o"
         ;;
 
 mn10300-*-*)
