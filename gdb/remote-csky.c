@@ -490,8 +490,10 @@ static int csky_register_conversion_v2[] = {
 static int
 csky_target_xml_register_conversion_v2 (int regno)
 {
-  if ((regno >= 0) && (regno <= 31)) /* GPR r0~r31.  */
+  if ((regno >= 0) && (regno <= 15)) /* GPR r0~r15.  */
     return regno;
+  else if ((regno >= 16) && (regno <= 31)) /* GPR r16~r31.  */
+    return (0x60 + (regno - 16));
   else if (regno == 36) /* HI.  */
     return 79;
   else if (regno == 37) /* LO.  */
