@@ -66,19 +66,18 @@ callgraph_hash_table func_hash_table;
 static struct csky_arch_for_merge csky_archs[] =
 {
   /* 510 and 610 merge to 610 without warning.  */
-  { "ck510",  CSKY_ARCH_510,  CSKY_V1,  0, 0},
-  { "ck610",  CSKY_ARCH_610,  CSKY_V1,  1, 0},
+  { "510",  CSKY_ARCH_510,  CSKY_V1,  0, 0},
+  { "610",  CSKY_ARCH_610,  CSKY_V1,  1, 0},
   /* 802p,803p,810p merge to largest one.  */
   /*{ "802p", M_CK802P, CSKY_V1P, 0, 1},
   { "803p", M_CK803P, CSKY_V1P, 1, 1},
   { "810p", M_CK810P, CSKY_V1P, 2, 1},*/
   /* 801,802,803,807,810 merge to largest one.  */
-  { "ck801",  CSKY_ARCH_801,  CSKY_V2,  0, 1},
-  { "ck802",  CSKY_ARCH_802,  CSKY_V2,  1, 1},
-  { "ck803",  CSKY_ARCH_803,  CSKY_V2,  2, 1},
-  { "ck807",  CSKY_ARCH_807,  CSKY_V2,  3, 1},
-  { "ck810",  CSKY_ARCH_810,  CSKY_V2,  4, 1},
-  { "ck860",  CSKY_ARCH_810,  CSKY_V2,  5, 1},
+  { "801",  CSKY_ARCH_801,  CSKY_V2,  0, 1},
+  { "802",  CSKY_ARCH_802,  CSKY_V2,  1, 1},
+  { "803",  CSKY_ARCH_803,  CSKY_V2,  2, 1},
+  { "807",  CSKY_ARCH_807,  CSKY_V2,  3, 1},
+  { "810",  CSKY_ARCH_810,  CSKY_V2,  4, 1},
   { NULL, 0, 0, 0, 0}
 };
 
@@ -891,62 +890,7 @@ static reloc_howto_type csky_elf_howto_table[] =
          0x0,                         /* src_mask */
          0xfff,                       /* dst_mask */
          TRUE),                       /* pcrel_offset */
-  /* 65: for vlrw instruction */
-  HOWTO (R_CKCORE_PCREL_VLRW_IMM12BY1,/* type */
-         0,                           /* rightshift */
-         4,                           /* size */
-         12,                          /* bitsize */
-         1,                           /* pc_relative */
-         0,                           /* bitpos */
-         complain_overflow_signed,    /* complain_on_overflow */
-         bfd_elf_generic_reloc,       /* special_function */
-         "R_CKCORE_PCREL_VLRW_IMM12BY1",/* name */
-         FALSE,                       /* partial_inplace */
-         0xfff,                         /* src_mask */
-         0x3ff030,                    /* dst_mask */
-         TRUE),                       /* pcrel_offset */
-  /* 66: for vlrw instruction */
-  HOWTO (R_CKCORE_PCREL_VLRW_IMM12BY2,/* type */
-         1,                           /* rightshift */
-         4,                           /* size */
-         12,                          /* bitsize */
-         1,                           /* pc_relative */
-         0,                           /* bitpos */
-         complain_overflow_signed,    /* complain_on_overflow */
-         bfd_elf_generic_reloc,       /* special_function */
-         "R_CKCORE_PCREL_VLRW_IMM12BY2",/* name */
-         FALSE,                       /* partial_inplace */
-         0xfff,                         /* src_mask */
-         0x3ff030,                    /* dst_mask */
-         TRUE),                       /* pcrel_offset */
-  /* 67: for vlrw instruction */
-  HOWTO (R_CKCORE_PCREL_VLRW_IMM12BY4,/* type */
-         2,                           /* rightshift */
-         4,                           /* size */
-         12,                          /* bitsize */
-         1,                           /* pc_relative */
-         0,                           /* bitpos */
-         complain_overflow_signed,    /* complain_on_overflow */
-         bfd_elf_generic_reloc,       /* special_function */
-         "R_CKCORE_PCREL_VLRW_IMM12BY4",/* name */
-         FALSE,                       /* partial_inplace */
-         0xfff,                         /* src_mask */
-         0x3ff030,                    /* dst_mask */
-         TRUE),                       /* pcrel_offset */
-  /* 68: for vlrw instruction */
-  HOWTO (R_CKCORE_PCREL_VLRW_IMM12BY8,/* type */
-         3,                           /* rightshift */
-         4,                           /* size */
-         12,                          /* bitsize */
-         1,                           /* pc_relative */
-         0,                           /* bitpos */
-         complain_overflow_signed,    /* complain_on_overflow */
-         bfd_elf_generic_reloc,       /* special_function */
-         "R_CKCORE_PCREL_VLRW_IMM12BY8",/* name */
-         FALSE,                       /* partial_inplace */
-         0xfff,                         /* src_mask */
-         0x3ff030,                    /* dst_mask */
-         TRUE),                       /* pcrel_offset */
+
 
 };
 
@@ -2886,95 +2830,61 @@ _csky_find_arch_with_eflag (const unsigned long arch_eflag)
   return csky_arch;
 }
 
-static csky_arch_for_merge *
-_csky_find_arch_with_name (const char *name)
-{
-  csky_arch_for_merge *csky_arch = NULL;
-  const char *msg;
-
-  if (name == NULL)
-    return NULL;
-
-  for (csky_arch = csky_archs; csky_arch->name != NULL; csky_arch++)
-    {
-      if (strncmp (csky_arch->name, name, strlen (csky_arch->name)) == 0)
-        break;
-    }
-  if (csky_arch == NULL)
-    {
-      msg = _("warning: unrecognised arch name '%#x'");
-      (*_bfd_error_handler) (msg, name);
-      bfd_set_error (bfd_error_wrong_format);
-    }
-  return csky_arch;
-}
+/* Merge backend specific data from an object file to the output
+   object file when linking.  */
 
 static bfd_boolean
-elf32_csky_merge_attributes (bfd *ibfd, bfd *obfd)
+csky_elf_merge_private_bfd_data (bfd * ibfd, bfd * obfd)
 {
-  obj_attribute *in_attr;
-  obj_attribute *out_attr;
-  obj_attribute tattr;
+  flagword old_flags;
+  flagword new_flags;
   csky_arch_for_merge *old_arch = NULL;
   csky_arch_for_merge *new_arch = NULL;
-  int i;
-  bfd_boolean result = TRUE;
-  const char *msg = NULL;
+  const char *msg;
 
-  const char *sec_name = get_elf_backend_data (ibfd)->obj_attrs_section;
+  /* Check if we have the same endianess.  */
+  if (! _bfd_generic_verify_endian_match (ibfd, obfd))
+    return FALSE;
 
-  /* Skip the linker stubs file.  This preserves previous behavior
-     of accepting unknown attributes in the first input file - but
-     is that a bug?  */
-  if (ibfd->flags & BFD_LINKER_CREATED)
+  if (bfd_get_flavour (ibfd) != bfd_target_elf_flavour
+      || bfd_get_flavour (obfd) != bfd_target_elf_flavour)
     return TRUE;
 
-  /* Skip any input that hasn't attribute section.
-     This enables to link object files without attribute section with
-     any others.  */
-  if (bfd_get_section_by_name (ibfd, sec_name) == NULL)
+  new_flags = elf_elfheader (ibfd)->e_flags;
+  old_flags = elf_elfheader (obfd)->e_flags;
+
+  if (! elf_flags_init (obfd))
     {
-      return TRUE;
+      /* First call, no flags set.  */
+      elf_flags_init (obfd) = TRUE;
+      elf_elfheader (obfd)->e_flags = new_flags;
     }
-
-  if (!elf_known_obj_attributes_proc (obfd)[0].i)
+  else if (new_flags == old_flags)
     {
-      /* This is the first object.  Copy the attributes.  */
-      out_attr = elf_known_obj_attributes_proc (obfd);
-
-      /* If Tag_CSKY_CPU_NAME is already set, save it.  */
-      memcpy (&tattr, &out_attr[Tag_CSKY_ARCH_NAME], sizeof (tattr));
-
-      _bfd_elf_copy_obj_attributes (ibfd, obfd);
-
-      out_attr = elf_known_obj_attributes_proc (obfd);
-
-      /* Restore Tag_CSKY_CPU_NAME.  */
-      memcpy (&out_attr[Tag_CSKY_ARCH_NAME], &tattr, sizeof (tattr));
-
-      /* Use the Tag_null value to indicate the attributes have been
-         initialized.  */
-      out_attr[0].i = 1;
+      /* do nothing.  */
     }
-
-  in_attr = elf_known_obj_attributes_proc (ibfd);
-  out_attr = elf_known_obj_attributes_proc (obfd);
-
-  for (i = LEAST_KNOWN_OBJ_ATTRIBUTE; i < NUM_KNOWN_OBJ_ATTRIBUTES; i++)
+  else if (new_flags == 0 || old_flags == 0)
     {
-      /* Merge this attribute with existing attributes.  */
-      switch (i)
+      /* when one flag is 0,assign the other one's flag.  */
+      elf_elfheader (obfd)->e_flags = new_flags | old_flags;
+    }
+  else
+    {
+      flagword newest_flag = 0;
+
+      if (((new_flags & CSKY_ARCH_MASK) != 0)
+              && ((old_flags & CSKY_ARCH_MASK) != 0))
         {
-        case Tag_CSKY_CPU_NAME:
-        case Tag_CSKY_ARCH_NAME:
-          /* Do arch merge.  */
-          new_arch = _csky_find_arch_with_name (in_attr[Tag_CSKY_ARCH_NAME].s);
-          old_arch = _csky_find_arch_with_name (out_attr[Tag_CSKY_ARCH_NAME].s);
-
+          new_arch = _csky_find_arch_with_eflag (new_flags & CSKY_ARCH_MASK);
+          old_arch = _csky_find_arch_with_eflag (old_flags & CSKY_ARCH_MASK);
+          /* the flags like"e , f ,g ..." , we take collection.  */
+          newest_flag = (old_flags & (~CSKY_ARCH_MASK))
+                         | (new_flags & (~CSKY_ARCH_MASK));
           if (new_arch != NULL && old_arch != NULL)
             {
-              if (new_arch->class != old_arch->class) {
-                msg = _("%B: machine flag conflict with target");
+              if (new_arch->class != old_arch->class)
+                {
+                  msg = _("%B: machine flag conflict with target");
 
                   (*_bfd_error_handler) (msg, ibfd);
                   bfd_set_error (bfd_error_wrong_format);
@@ -2997,154 +2907,7 @@ elf32_csky_merge_attributes (bfd *ibfd, bfd *obfd)
                        bfd_set_error (bfd_error_wrong_format);
                     }
 
-                  if (out_attr[Tag_CSKY_ARCH_NAME].s != NULL)
-                    bfd_release (obfd, out_attr[Tag_CSKY_ARCH_NAME].s);
-
-                  out_attr[Tag_CSKY_ARCH_NAME].s =
-                   _bfd_elf_attr_strdup (obfd, newest_arch->name);
-                }
-            }
-
-          break;
-
-        case Tag_CSKY_ISA_FLAGS:
-        case Tag_CSKY_ISA_EXT_FLAGS:
-          out_attr[i].i |= in_attr[i].i;
-          break;
-
-        case Tag_CSKY_VDSP_VERSION:
-          if (out_attr[i].i == 0)
-            out_attr[i].i = in_attr[i].i;
-          else if (out_attr[i].i != in_attr[i].i
-                   && in_attr[i].i != 0)
-            {
-              _bfd_error_handler
-               (_("Error: %B and %B has different VDSP version"), ibfd, obfd);
-              result = FALSE;
-            }
-          break;
-
-        case Tag_CSKY_FPU_VERSION:
-          if (out_attr[i].i <= in_attr[i].i
-              && out_attr[i].i == 0)
-            out_attr[i].i = in_attr[i].i;
-          break;
-
-        case Tag_CSKY_DSP_VERSION:
-          if (out_attr[i].i == 0)
-            out_attr[i].i = in_attr[i].i;
-          else if (out_attr[i].i != in_attr[i].i
-                   && in_attr[i].i != 0)
-            {
-              _bfd_error_handler
-               (_("Error: %B and %B has different DSP version"), ibfd, obfd);
-              result = FALSE;
-            }
-          break;
-
-        default:
-          result
-           = result && _bfd_elf_merge_unknown_attribute_low (ibfd, obfd, i);
-          break;
-        }
-
-      /* If out_attr was copied from in_attr then it won't have a type yet.  */
-      if (in_attr[i].type && !out_attr[i].type)
-        out_attr[i].type = in_attr[i].type;
-    }
-
-  /* Merge Tag_compatibility attributes and any common GNU ones.  */
-  if (!_bfd_elf_merge_object_attributes (ibfd, obfd))
-    return FALSE;
-
-  /* Check for any attributes not known on CSKY.  */
-  result &= _bfd_elf_merge_unknown_attribute_list (ibfd, obfd);
-
-  return result;
-}
-
-
-/* Merge backend specific data from an object file to the output
-   object file when linking.  */
-
-static bfd_boolean
-csky_elf_merge_private_bfd_data (bfd * ibfd, bfd * obfd)
-{
-  flagword old_flags;
-  flagword new_flags;
-  csky_arch_for_merge *old_arch = NULL;
-  csky_arch_for_merge *new_arch = NULL;
-  flagword newest_flag = 0;
-  const char *msg;
-  const char *sec_name;
-  obj_attribute *out_attr;
-
-  /* Check if we have the same endianess.  */
-  if (! _bfd_generic_verify_endian_match (ibfd, obfd))
-    return FALSE;
-
-  if (bfd_get_flavour (ibfd) != bfd_target_elf_flavour
-      || bfd_get_flavour (obfd) != bfd_target_elf_flavour)
-    return TRUE;
-
-  /* Merge ".csky.attribute" section.  */
-  if (!elf32_csky_merge_attributes (ibfd, obfd))
-    return FALSE;
-
-  if (! elf_flags_init (obfd))
-    {
-      /* First call, no flags set.  */
-      elf_flags_init (obfd) = TRUE;
-    }
-
-  /* Try to merge e_flag.  */
-  new_flags = elf_elfheader (ibfd)->e_flags;
-  old_flags = elf_elfheader (obfd)->e_flags;
-  out_attr = elf_known_obj_attributes_proc (obfd);
-
-  /* the flags like"e , f ,g ..." , we take collection.  */
-  newest_flag = (old_flags & (~CSKY_ARCH_MASK))
-   | (new_flags & (~CSKY_ARCH_MASK));
-
-  sec_name = get_elf_backend_data (ibfd)->obj_attrs_section;
-  if (bfd_get_section_by_name (ibfd, sec_name) == NULL)
-    {
-      /* Input BFDs have no ".csky.attribute" section.  */
-      new_arch = _csky_find_arch_with_eflag (new_flags & CSKY_ARCH_MASK);
-      old_arch = _csky_find_arch_with_name (out_attr[Tag_CSKY_ARCH_NAME].s);
-
-      if (new_arch != NULL && old_arch != NULL)
-        {
-          if (new_arch->class != old_arch->class)
-            {
-              msg = _("%B: machine flag conflict with target");
-
-              (*_bfd_error_handler) (msg, ibfd);
-              bfd_set_error (bfd_error_wrong_format);
-              return FALSE;
-            }
-          else if (new_arch->class_level != old_arch->class_level)
-            {
-                  csky_arch_for_merge *newest_arch =
-                  ((new_arch->class_level > old_arch->class_level) ?
-                  new_arch : old_arch) ;
-
-                  if (new_arch->do_warning || old_arch->do_warning)
-                    {
-                      msg = _("warning: file %B's arch flag ck%s conflict \
-                              with target ck%s,set target arch flag to ck%s ");
-
-                       (*_bfd_error_handler) (msg, ibfd,  new_arch->name,
-                                              old_arch->name,
-                                              (newest_arch->name));
-                       bfd_set_error (bfd_error_wrong_format);
-                    }
-
-                  if (out_attr[Tag_CSKY_ARCH_NAME].s != NULL)
-                    bfd_release (obfd, out_attr[Tag_CSKY_ARCH_NAME].s);
-
-                  out_attr[Tag_CSKY_ARCH_NAME].s =
-                   _bfd_elf_attr_strdup (obfd, newest_arch->name);
+                  newest_flag |= newest_arch->arch_eflag;
                 }
               else
                 {
@@ -3154,14 +2917,18 @@ csky_elf_merge_private_bfd_data (bfd * ibfd, bfd * obfd)
             }
           else
             {
-              if (new_arch && new_arch->name != NULL)
-                out_attr[Tag_CSKY_ARCH_NAME].s =
-                 _bfd_elf_attr_strdup (obfd, new_arch->name);
+              newest_flag |= ((new_flags & (CSKY_ARCH_MASK | CSKY_ABI_MASK))
+                              | (old_flags & (CSKY_ARCH_MASK | CSKY_ABI_MASK)));
             }
+        }
+      else
+        {
+          newest_flag |= ((new_flags & (CSKY_ARCH_MASK | CSKY_ABI_MASK))
+                           | (old_flags & (CSKY_ARCH_MASK | CSKY_ABI_MASK)));
+        }
+
+      elf_elfheader (obfd)->e_flags = newest_flag;
     }
-
-  elf_elfheader (obfd)->e_flags = newest_flag;
-
   return TRUE;
 }
 
@@ -4982,7 +4749,7 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                    Otherwise it is local symbol, find the function with
                    address.  */
                 /* TODO: deal with callgraph */
-                callgraph_hash_entry *cal= NULL;
+                callgraph_hash_entry *ret = NULL;
                 BFD_ASSERT (input_section->output_section != NULL);
                 long address = input_section->output_offset + rel->r_offset
                                + input_section->output_section->vma;
@@ -4998,7 +4765,7 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                     if (h != NULL)
                       {
                         /* Global.  */
-                        cal = callgraph_hash_lookup (&func_hash_table,
+                        ret = callgraph_hash_lookup (&func_hash_table,
                                                      h->root.root.string,
                                                      0, 0);
                       }
@@ -5013,23 +4780,23 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                                                          call_func, func_addr,
                                                          1);
                         if (call_func != NULL)
-                          cal = call_func->hash_entry;
+                          ret = call_func->hash_entry;
                       }
-                    if (cal != NULL)
+                    if (ret != NULL)
                       if (current_func != NULL)
                         {
                           if (current_func != NULL)
                             {
                               func_vec_insert (&current_func->hash_entry->calls,
-                                               cal);
-                              func_vec_insert (&cal->call_bys,
+                                               ret);
+                              func_vec_insert (&ret->call_bys,
                                                current_func->hash_entry);
                             }
                           else
                             {
                               add_ref elem;
                               elem.section = input_section;
-                              add_ref_list_insert (&cal->add_refs, elem);
+                              add_ref_list_insert (&ret->add_refs, elem);
                             }
                         }
                   }
@@ -5729,29 +5496,18 @@ csky_elf_grok_psinfo (bfd *abfd, Elf_Internal_Note *note)
 static int
 elf32_csky_obj_attrs_arg_type (int tag)
 {
-  switch (tag)
-    {
-    case Tag_compatibility:
-      return ATTR_TYPE_FLAG_INT_VAL | ATTR_TYPE_FLAG_STR_VAL;
-    case Tag_CSKY_ARCH_NAME:
-    case Tag_CSKY_CPU_NAME:
-      return ATTR_TYPE_FLAG_STR_VAL;
-    case Tag_CSKY_ISA_FLAGS:
-    case Tag_CSKY_ISA_EXT_FLAGS:
-    case Tag_CSKY_DSP_VERSION:
-    case Tag_CSKY_VDSP_VERSION:
-    case Tag_CSKY_FPU_VERSION:
-      return ATTR_TYPE_FLAG_INT_VAL;
-    default:
-      break;
-    }
+  if (tag == Tag_compatibility)
+    return ATTR_TYPE_FLAG_INT_VAL | ATTR_TYPE_FLAG_STR_VAL;
+  else if (tag == Tag_CSKY_ARCH_NAME || tag == Tag_CSKY_CPU_NAME)
+    return ATTR_TYPE_FLAG_STR_VAL;
 
-  return (tag & 1) != 0 ? ATTR_TYPE_FLAG_STR_VAL : ATTR_TYPE_FLAG_INT_VAL;
+  else
+    return (tag & 1) != 0 ? ATTR_TYPE_FLAG_STR_VAL : ATTR_TYPE_FLAG_INT_VAL;
 }
 
 /* Attribute numbers >=64 (mod 128) can be safely ignored.  */
 static bfd_boolean
-elf32_csky_obj_attrs_handle_unknown (bfd *abfd ATTRIBUTE_UNUSED, int tag ATTRIBUTE_UNUSED)
+elf32_csky_obj_attrs_handle_unknown (bfd *abfd, int tag)
 {
   return TRUE;
 }
