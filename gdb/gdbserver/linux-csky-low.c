@@ -19,12 +19,12 @@
 #include "server.h"
 #include "linux-low.h"
 #include "regcache.h"
-
 #include <sys/ptrace.h>
-
 #include "gdb_proc_service.h"
-
 #include <sys/utsname.h>
+#include <linux/version.h>
+#include <asm/ptrace.h>
+#include <elf.h>
 
 #if 0
 #define csky_debug_info(args) do { printf args; } while (0)
@@ -53,7 +53,7 @@ extern const struct target_desc *tdesc_cskyv2_linux;
   #define CSKY_GREG_SIZE 144
   #define CSKY_FREG_NUM   16
   #define CSKY_FREG_LEN    8
-  #define CSKY_FREG_SIZE 136   /* 16 * 8 + 2 * 4 bytes.  */
+  #define CSKY_FREG_SIZE 140   /* 16 * 8 + 3 * 4 bytes.  */
   #define csky_num_regs  128
 #else /* not __CSKYABIV2__ */
   #define CSKY_GREG_NUM   16
@@ -61,7 +61,7 @@ extern const struct target_desc *tdesc_cskyv2_linux;
   #define CSKY_GREG_SIZE 144
   #define CSKY_FREG_NUM   32
   #define CSKY_FREG_LEN    4
-  #define CSKY_FREG_SIZE 136   /* 32 * 4 + 2 * 4 bytes.  */
+  #define CSKY_FREG_SIZE 140   /* 32 * 4 + 3 * 4 bytes.  */
   #ifndef __CSKY_LINUX_2_6_27_55__
     #define csky_num_regs  126
   #else  /* __CSKY_LINUX_2_6_27_55__ */
@@ -69,7 +69,9 @@ extern const struct target_desc *tdesc_cskyv2_linux;
   #endif /* __CSKY_LINUX_2_6_27_55__ */
 #endif /* not __CSKYABIV2__ */
 
-#include <asm/ptrace.h>
+#if ((LINUX_VERSION_CODE >> 16) >= 4)
+#define CSKY_USING_PT_RGESET 1
+#endif
 
 /* Return the ptrace "address" of register REGNO.  */
 #ifndef __CSKY_LINUX_2_6_27_55__
@@ -207,8 +209,6 @@ csky_arch_setup ()
   return;
 }
 
-#define csky_decr_stop_pc   0
-
 static struct usrregs_info csky_usrregs_info =
 {
   csky_num_regs,
@@ -221,8 +221,17 @@ ps_err_e
 ps_get_thread_area (struct ps_prochandle *ph,
                     lwpid_t lwpid, int idx, void **base)
 {
+#ifndef CSKY_USING_PT_RGESET
   if (ptrace (PTRACE_GET_THREAD_AREA, lwpid, NULL, base) != 0)
     return PS_ERR;
+#else
+  struct pt_regs regset;
+  if (ptrace (PTRACE_GETREGSET, lwpid,
+             (PTRACE_TYPE_ARG3) (long) NT_PRSTATUS, &regset) != 0)
+    return PS_ERR;
+
+  *base = (void *) regset.tls;
+#endif
 
   /* IDX is the bias from the thread pointer to the beginning of the
      thread descriptor.  It has to be subtracted due to implementation
@@ -243,14 +252,14 @@ csky_fill_gregset (struct regcache *regcache, void *buf)
   /* Insn v1: r0 ~ r15
      insn v2: r0 ~ r32, hi , lo.  */
   for (i = 0; i < CSKY_GREG_NUM; i++)
-  {
-    if (csky_regmap[i] != -1)
     {
-      collect_register (regcache, i, ((char*) buf) + csky_regmap[i]);
-      csky_debug_info (("\tcollect r%d = 0x%x\n", i,
-                        *(int*)(((char*) buf) + csky_regmap[i])));
+      if (csky_regmap[i] != -1)
+        {
+          collect_register (regcache, i, ((char*) buf) + csky_regmap[i]);
+          csky_debug_info (("\tcollect r%d = 0x%x\n", i,
+                           *(int*)(((char*) buf) + csky_regmap[i])));
+        }
     }
-  }
 
   /* For PC & PSR.  */
   collect_register_by_name (regcache, "pc", (char *) buf + 33 * 4);
@@ -342,9 +351,9 @@ csky_store_fpregset (struct regcache *regcache, const void *buf)
   supply_register_by_name (regcache, "fid", (char *) p_buf + 8);
   base = find_regno (regcache->tdesc, "fr0");
 #else
-  supply_register_by_name (regcache, "cp1cr1", (char *) p_buf); // fcr
-  supply_register_by_name (regcache, "cp1cr2", (char *) p_buf + 4); // fsr
-  supply_register_by_name (regcache, "cp1cr4", (char *) p_buf + 8); // fesr
+  supply_register_by_name (regcache, "cp1cr1", (char *) p_buf); /* FCR */
+  supply_register_by_name (regcache, "cp1cr2", (char *) p_buf + 4); /* FSR */
+  supply_register_by_name (regcache, "cp1cr4", (char *) p_buf + 8); /* FESR */
   base = find_regno (regcache->tdesc, "cp1gr0");
 #endif
 
@@ -354,15 +363,168 @@ csky_store_fpregset (struct regcache *regcache, const void *buf)
                        (char *) p_buf + buf_adjust + i * CSKY_FREG_LEN);
     }
 }
-#endif /* HAVE_PTRACE_GETREGS */
+
+#ifdef CSKY_USING_PT_RGESET /* Gdbserver will use PTRACE_GET/SET_RGESET.  */
+static void
+csky_fill_pt_gregset (struct regcache *regcache, void *buf)
+{
+  int i, base;
+  struct pt_regs *regset = (struct pt_regs *)buf;
+
+  collect_register_by_name (regcache, "r15",  &regset->lr);
+  collect_register_by_name (regcache, "pc", &regset->pc);
+  collect_register_by_name (regcache, "psr", &regset->sr);
+#ifndef __CSKYABIV2__
+  collect_register_by_name (regcache, "r0", &regset->usp);
+#else   /* __CSKYABIV2__ */
+  collect_register_by_name (regcache, "r14", &regset->usp);
+#endif  /* __CSKYABIV2__ */
+
+#ifndef __CSKYABIV2__
+  collect_register_by_name (regcache, "r2", &regset->a0);
+  collect_register_by_name (regcache, "r3", &regset->a1);
+  collect_register_by_name (regcache, "r4", &regset->a2);
+  collect_register_by_name (regcache, "r5", &regset->a3);
+
+  collect_register_by_name (regcache, "r6",  &regset->regs[0]);
+  collect_register_by_name (regcache, "r7",  &regset->regs[1]);
+  collect_register_by_name (regcache, "r8",  &regset->regs[2]);
+  collect_register_by_name (regcache, "r9",  &regset->regs[3]);
+  collect_register_by_name (regcache, "r10", &regset->regs[4]);
+  collect_register_by_name (regcache, "r11", &regset->regs[5]);
+  collect_register_by_name (regcache, "r12", &regset->regs[6]);
+  collect_register_by_name (regcache, "r13", &regset->regs[7]);
+  collect_register_by_name (regcache, "r14", &regset->regs[8]);
+  collect_register_by_name (regcache, "r1",  &regset->regs[9]);
+#else  /* __CSKYABIV2__ */
+
+  collect_register_by_name (regcache, "r0", &regset->a0);
+  collect_register_by_name (regcache, "r1", &regset->a1);
+  collect_register_by_name (regcache, "r2", &regset->a2);
+  collect_register_by_name (regcache, "r3", &regset->a3);
+
+  base = find_regno (regcache->tdesc, "r4");
+
+  for (i = 0; i < 10; i++)
+    collect_register (regcache, base + i,   &regset->regs[i]);
+
+  base = find_regno (regcache->tdesc, "r16");
+  for (i = 0; i < 16; i++)
+    collect_register (regcache, base + i,   &regset->exregs[i]);
+
+  collect_register_by_name (regcache, "hi", &regset->rhi);
+  collect_register_by_name (regcache, "lo", &regset->rlo);
+#endif /* __CSKYABIV2__ */
+}
+
+static void
+csky_store_pt_gregset (struct regcache *regcache, const void *buf)
+{
+  int i, base;
+  const struct pt_regs *regset = (const struct pt_regs *) buf;
+
+  supply_register_by_name (regcache, "r15",  &regset->lr);
+  supply_register_by_name (regcache, "pc", &regset->pc);
+  supply_register_by_name (regcache, "psr", &regset->sr);
+#ifndef __CSKYABIV2__
+  supply_register_by_name (regcache, "r0", &regset->usp);
+#else   /* __CSKYABIV2__ */
+  supply_register_by_name (regcache, "r14", &regset->usp);
+#endif  /* __CSKYABIV2__ */
+
+#ifndef __CSKYABIV2__
+  supply_register_by_name (regcache, "r2", &regset->a0);
+  supply_register_by_name (regcache, "r3", &regset->a1);
+  supply_register_by_name (regcache, "r4", &regset->a2);
+  supply_register_by_name (regcache, "r5", &regset->a3);
+
+  supply_register_by_name (regcache, "r6",  &regset->regs[0]);
+  supply_register_by_name (regcache, "r7",  &regset->regs[1]);
+  supply_register_by_name (regcache, "r8",  &regset->regs[2]);
+  supply_register_by_name (regcache, "r9",  &regset->regs[3]);
+  supply_register_by_name (regcache, "r10", &regset->regs[4]);
+  supply_register_by_name (regcache, "r11", &regset->regs[5]);
+  supply_register_by_name (regcache, "r12", &regset->regs[6]);
+  supply_register_by_name (regcache, "r13", &regset->regs[7]);
+  supply_register_by_name (regcache, "r14", &regset->regs[8]);
+  supply_register_by_name (regcache, "r1",  &regset->regs[9]);
+#else  /* __CSKYABIV2__ */
+  supply_register_by_name (regcache, "r0", &regset->a0);
+  supply_register_by_name (regcache, "r1", &regset->a1);
+  supply_register_by_name (regcache, "r2", &regset->a2);
+  supply_register_by_name (regcache, "r3", &regset->a3);
+
+  base = find_regno (regcache->tdesc, "r4");
+
+  for (i = 0; i < 10; i++)
+    supply_register (regcache, base + i,   &regset->regs[i]);
+
+  base = find_regno (regcache->tdesc, "r16");
+  for (i = 0; i < 16; i++)
+    supply_register (regcache, base + i,   &regset->exregs[i]);
+
+  supply_register_by_name (regcache, "hi", &regset->rhi);
+  supply_register_by_name (regcache, "lo", &regset->rlo);
+#endif /* __CSKYABIV2__ */
+}
+
+static void
+csky_fill_pt_vrregset (struct regcache *regcache, void *buf)
+{
+#ifdef    __CSKYABIV2__
+  int i, base;
+  struct user_fp *regset = (struct user_fp *)buf;
+
+  base = find_regno (regcache->tdesc, "vr0");
+
+  for (i = 0; i < 16; i++)
+    collect_register (regcache, base + i, &regset->vr[i * 4]);
+  collect_register_by_name (regcache, "fcr", &regset->fcr);
+  collect_register_by_name (regcache, "fesr", &regset->fesr);
+  collect_register_by_name (regcache, "fid", &regset->fid);
+#endif /* __CSKYABIV2__ */
+}
+
+static void
+csky_store_pt_vrregset (struct regcache *regcache, const void *buf)
+{
+#ifdef    __CSKYABIV2__
+  int i, base;
+  const struct user_fp *regset = (const struct user_fp *)buf;
+
+  base = find_regno (regcache->tdesc, "vr0");
+
+  for (i = 0; i < 16; i++)
+    supply_register (regcache, base + i, &regset->vr[i * 4]);
+
+  base = find_regno (regcache->tdesc, "fr0");
+
+  for (i = 0; i < 16; i++)
+    supply_register (regcache, base + i, &regset->vr[i * 4 + 2]);
+  supply_register_by_name (regcache, "fcr", &regset->fcr);
+  supply_register_by_name (regcache, "fesr", &regset->fesr);
+  supply_register_by_name (regcache, "fid", &regset->fid);
+#endif /* __CSKYABIV2__ */
+}
+
+#endif  /* CSKY_USING_PT_RGESET */
+#endif  /* HAVE_PTRACE_GETREGS */
 
 struct regset_info csky_regsets[] = {
 #ifdef HAVE_PTRACE_GETREGS
+#if (defined CSKY_USING_PT_RGESET) && (defined __CSKYABIV2__)
+  { PTRACE_GETREGSET, PTRACE_SETREGSET, NT_PRSTATUS, sizeof(struct pt_regs),
+    GENERAL_REGS, csky_fill_pt_gregset, csky_store_pt_gregset},
+
+  { PTRACE_GETREGSET, PTRACE_SETREGSET, NT_FPREGSET, sizeof(struct user_fp),
+    FP_REGS, csky_fill_pt_vrregset, csky_store_pt_vrregset},
+#else  /* not (CSKY_USING_PT_RGESET &&  __CSKYABIV2__) */
   { PTRACE_GETREGS, PTRACE_SETREGS, 0, CSKY_GREG_SIZE, GENERAL_REGS,
     csky_fill_gregset, csky_store_gregset },
 
   { PTRACE_GETFPREGS, PTRACE_SETFPREGS, 0, CSKY_FREG_SIZE, FP_REGS,
     csky_fill_fpregset, csky_store_fpregset },
+#endif /* not (CSKY_USING_PT_RGESET &&  __CSKYABIV2__) */
 #endif /* HAVE_PTRACE_GETREGS */
   NULL_REGSET
 };
@@ -412,7 +574,7 @@ csky_supports_z_point_type (char z_type)
 static int
 csky_breakpoint_at (CORE_ADDR pc)
 {
-  unsigned short insn;
+  unsigned int insn;
 
   (*the_target->read_memory) (pc, (unsigned char *) &insn,
                               csky_breakpoint_len);
@@ -426,6 +588,7 @@ csky_breakpoint_at (CORE_ADDR pc)
       if (insn == ABIV2_INSN_TRAP1)
         return 1;
 #endif
+      return 0;
     }
   else
     {
