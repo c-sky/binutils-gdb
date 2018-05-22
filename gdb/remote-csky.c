@@ -5574,17 +5574,22 @@ csky_reset_command (char *args, int from_tty)
       error (errorinfo ());
     }
 
-  /* Target have been reset. Now we should init kernel_ops.  */
+  /* Initialize thread_list in GDB.  */
   if (!csky_should_use_multicore_functions ())
-    rtos_ops.to_reset(rtos_ops.rtos_des);
+    {
+      if (rtos_ops.rtos_des)
+        {
+          rtos_ops.to_reset (rtos_ops.rtos_des);
+        }
+    }
+  else
+    {
+      target_update_thread_list ();
+    }
 
   registers_changed ();
 
   {
-    inferior_ptid = remote_csky_ptid;
-    inferior_appeared (current_inferior (), ptid_get_pid (inferior_ptid));
-    add_thread_silent (inferior_ptid);
-
     reinit_frame_cache ();
     registers_changed ();
     stop_pc = regcache_read_pc (get_current_regcache ());
@@ -5771,9 +5776,18 @@ csky_soft_reset_command (char *args, int from_tty)
       error (errorinfo ());
     }
 
-  /* Target have been reset. Now we should init kernel_ops.  */
+  /* Initialize thread_list in GDB.  */
   if (!csky_should_use_multicore_functions ())
-    rtos_ops.to_reset (rtos_ops.rtos_des);
+    {
+      if (rtos_ops.rtos_des)
+        {
+          rtos_ops.to_reset (rtos_ops.rtos_des);
+        }
+    }
+  else
+    {
+      target_update_thread_list ();
+    }
 
   registers_changed ();
 
@@ -5782,10 +5796,6 @@ csky_soft_reset_command (char *args, int from_tty)
   /* if(interpreter_p != NULL
         && (interpreter_p[0] == 'm' && interpreter_p[1] == 'i'))  */
   {
-    inferior_ptid = remote_csky_ptid;
-    inferior_appeared (current_inferior (), ptid_get_pid (inferior_ptid));
-    add_thread_silent (inferior_ptid);
-
     reinit_frame_cache ();
     registers_changed ();
     stop_pc = regcache_read_pc (get_current_regcache ());
