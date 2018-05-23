@@ -4499,9 +4499,10 @@ csky_wait (struct target_ops *ops, ptid_t ptid,
            struct target_waitstatus *status, int options)
 {
   int cpu_status;
-  struct thread_info *tp;
+  struct thread_info *tp, *tp_pro;
   TARGET_DEBUG_PRINTF (("csky_wait.\n"));
 
+  tp_pro = NULL;
   interrupt_count = 0;
 
   /* Set new signal handler.  */
@@ -4557,6 +4558,21 @@ csky_wait (struct target_ops *ops, ptid_t ptid,
         {
           if (cpu_status && !HSR_PR_TRUE(cpu_status))
             break;
+          else if (cpu_status && HSR_PR_TRUE(cpu_status))
+          {
+            /* If a CPU has been in debug-mode but PRO is 1 and
+               all CPUs has been scaned, not a CPU is in debug-mode
+               with PRO is 0, just break. There may be any error
+               happened in hardware, if not break, here will be a
+               "while(1)"  */
+            if (tp_pro == NULL)
+              tp_pro = tp;
+            else
+              {
+                if (tp_pro == tp)
+                  break;
+              }
+          }
           cpu_status = 0;
           tp = tp->next;
           if (!tp)
