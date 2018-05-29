@@ -6065,6 +6065,8 @@ csky_set_thread_multicore (struct ptid ptid)
 static int
 csky_should_use_multicore_functions (void)
 {
+  if (strcmp (current_target.to_shortname, "remote") == 0)
+    return 0;
   if (csky_rtos_ops_flag)
     return 0;
   if (csky_agent_multicore_thread != -1)
