@@ -21,7 +21,6 @@
 #include "regcache.h"
 #include <sys/ptrace.h>
 #include "gdb_proc_service.h"
-#include <sys/utsname.h>
 #include <linux/version.h>
 #include <asm/ptrace.h>
 #include <elf.h>
@@ -48,29 +47,30 @@ extern const struct target_desc *tdesc_cskyv2_linux;
 #endif /* not PTRACE_GET_THREAD_AREA.  */
 
 #ifdef __CSKYABIV2__
-  #define CSKY_GREG_NUM   32
+  #define CSKY_GREG_NUMBER   32
   /* Shoule the same with regoff[] in file : ptrace.c.  */
-  #define CSKY_GREG_SIZE 144
-  #define CSKY_FREG_NUM   16
-  #define CSKY_FREG_LEN    8
-  #define CSKY_FREG_SIZE 140   /* 16 * 8 + 3 * 4 bytes.  */
-  #define csky_num_regs  128
+  #define CSKY_GREG_SIZE    144
+  #define CSKY_FREG_NUMBER   16
+  #define CSKY_FREG_LEN       8
+  #define CSKY_FREG_SIZE    140   /* 16 * 8 + 3 * 4 bytes.  */
+  #define csky_num_regs     128
 #else /* not __CSKYABIV2__ */
-  #define CSKY_GREG_NUM   16
+  #define CSKY_GREG_NUMBER   16
   /* Shoule the same with regoff[] in file : ptrace.c.  */
-  #define CSKY_GREG_SIZE 144
-  #define CSKY_FREG_NUM   32
-  #define CSKY_FREG_LEN    4
-  #define CSKY_FREG_SIZE 140   /* 32 * 4 + 3 * 4 bytes.  */
+  #define CSKY_GREG_SIZE    144
+  #define CSKY_FREG_NUMBER   32
+  #define CSKY_FREG_LEN       4
+  #define CSKY_FREG_SIZE    140   /* 32 * 4 + 3 * 4 bytes.  */
   #ifndef __CSKY_LINUX_2_6_27_55__
-    #define csky_num_regs  126
+    #define csky_num_regs   126
   #else  /* __CSKY_LINUX_2_6_27_55__ */
-    #define csky_num_regs   90
+    #define csky_num_regs    90
   #endif /* __CSKY_LINUX_2_6_27_55__ */
 #endif /* not __CSKYABIV2__ */
 
 #if ((LINUX_VERSION_CODE >> 16) >= 4)
 #define CSKY_USING_PT_RGESET 1
+#define CSKY_KERNEL_CODE_BTHAN_4X
 #endif
 
 /* Return the ptrace "address" of register REGNO.  */
@@ -127,6 +127,22 @@ static int csky_regmap[] = {
 };
 #endif /* __CSKY_LINUX_2_6_27_55__ */
 
+/* CSKY software breakpoint instruction code.  */
+/* When ABIV2 and Kernel code version behind v4.x,
+   illegal insn 0x1464 is a software bkpt trigger.
+   When an illegal insn exception happens, the case
+   that insn at EPC is 0x1464 will be regnized as SIGTRAP.  */
+static unsigned short csky_breakpoint_bkpt_2 = 0x0000;
+static unsigned int csky_breakpoint_bkpt_4 = 0x00000000;
+#ifdef __CSKYABIV2__
+/* Just used in abiv2.  */
+static unsigned short csky_breakpoint_illegal_2_v2 = 0x1464;
+static unsigned int csky_breakpoint_illegal_4_v2 = 0x14641464;
+#else /* not __CSKYABIV2__ */
+/* Just in abiv1.  */
+static unsigned short csky_breakpoint_trap1_v1 = 0x0009;
+#endif
+
 static int
 csky_cannot_fetch_register (int regno)
 {
@@ -166,40 +182,9 @@ csky_set_pc (struct regcache *regcache, CORE_ADDR pc)
   csky_debug_info (("FUNC: csky_set_pc, pc = 0x%x\n", (int)new_pc));
 }
 
-/* CSKY software breakpoint instruction code.  */
-static unsigned int csky_breakpoint = 0x0000;
-static unsigned int csky_breakpoint_len = 2;
-static int used_trap1_flag = 0;
-
-#ifdef __CSKYABIV2__
-#define ABIV2_INSN_TRAP1     0x2420c000
-#define ABIV2_INSN_TRAP1_LEN 4
-#else
-#define ABIV1_INSN_TRAP1     0x0009
-#define ABIV1_INSN_TRAP1_LEN 2
-#endif
-
 static void
 csky_arch_setup ()
 {
-  struct utsname name_info;
-  static unsigned int data;
-  static int len;
-
-  uname (&name_info);
-  csky_debug_info (("(name_info.release[0] is %d\n", name_info.release[0]));
-  if (name_info.release[0] >= '4')
-    {
-      used_trap1_flag = 1;
-#ifndef __CSKYABIV2__
-      csky_breakpoint = ABIV1_INSN_TRAP1;
-      csky_breakpoint_len = ABIV1_INSN_TRAP1_LEN;
-#else  /* __CSKYABIV2__ */
-      csky_breakpoint = ABIV2_INSN_TRAP1;
-      csky_breakpoint_len  = ABIV2_INSN_TRAP1_LEN;
-#endif /* __CSKYABIV2__ */
-    }
-
 #ifndef __CSKYABIV2__
   current_process ()->tdesc = tdesc_cskyv1_linux;
 #else
@@ -251,7 +236,7 @@ csky_fill_gregset (struct regcache *regcache, void *buf)
   csky_debug_info (("FUNC: csky_fill_gregset\n"));
   /* Insn v1: r0 ~ r15
      insn v2: r0 ~ r32, hi , lo.  */
-  for (i = 0; i < CSKY_GREG_NUM; i++)
+  for (i = 0; i < CSKY_GREG_NUMBER; i++)
     {
       if (csky_regmap[i] != -1)
         {
@@ -282,7 +267,7 @@ csky_store_gregset (struct regcache *regcache, const void *buf)
   char zerobuf[4];
 
   memset (zerobuf, 0, 4);
-  for (i = 0; i < CSKY_GREG_NUM; i++)
+  for (i = 0; i < CSKY_GREG_NUMBER; i++)
     {
       if (csky_regmap[i] != -1)
         {
@@ -330,7 +315,7 @@ csky_fill_fpregset (struct regcache *regcache, void *buf)
   base = find_regno (regcache->tdesc, "cp1gr0");
 #endif
 
-  for (i = 0; i < CSKY_FREG_NUM; i++)
+  for (i = 0; i < CSKY_FREG_NUMBER; i++)
     {
       collect_register (regcache, base + i,
                         (char *) p_buf + buf_adjust + i * CSKY_FREG_LEN);
@@ -357,7 +342,7 @@ csky_store_fpregset (struct regcache *regcache, const void *buf)
   base = find_regno (regcache->tdesc, "cp1gr0");
 #endif
 
-  for (i = 0; i < CSKY_FREG_NUM; i++)
+  for (i = 0; i < CSKY_FREG_NUMBER; i++)
     {
       supply_register (regcache, base + i,
                        (char *) p_buf + buf_adjust + i * CSKY_FREG_LEN);
@@ -555,10 +540,41 @@ csky_regs_info (void)
 static const gdb_byte *
 csky_sw_breakpoint_from_kind (int kind, int *size)
 {
-  *size = csky_breakpoint_len;
-  csky_debug_info (("csky_sw_breakpoint_from_kind csky_breakpoint is 0x%x\n",
-                    csky_breakpoint));
-  return (const gdb_byte *) &csky_breakpoint;
+#ifdef __CSKYABIV2__
+#ifdef CSKY_KERNEL_CODE_BTHAN_4X
+  if (kind == 4)
+    {
+      *size = 4;
+      return (const gdb_byte *) &csky_breakpoint_illegal_4_v2;
+    }
+  else
+    {
+      *size = 2;
+      return (const gdb_byte *) &csky_breakpoint_illegal_2_v2;
+    }
+#else  /* not CSKY_KERNEL_CODE_BTHAN_4X */
+  if (kind == 4)
+    {
+      *size = 4;
+      return (const gdb_byte *) &csky_breakpoint_bkpt_4;
+    }
+  else
+    {
+      *size = 2;
+      return (const gdb_byte *) &csky_breakpoint_bkpt_2;
+    }
+#endif /* not CSKY_KERNEL_CODE_BTHAN_4X */
+
+#else  /* not __CSKYABIV2__ */
+#ifdef CSKY_KERNEL_CODE_BTHAN_4X
+  *size = 2;
+  return (const gdb_byte *) &csky_breakpoint_trap1_v1;
+#else  /* not CSKY_KERNEL_CODE_BTHAN_4X */
+  *size = 2;
+  return (const gdb_byte *) &csky_breakpoint_bkpt_2;
+#endif /* not CSKY_KERNEL_CODE_BTHAN_4X */
+#endif /* not __CSKYABIV2__ */
+
 }
 
 static int
@@ -576,26 +592,31 @@ csky_breakpoint_at (CORE_ADDR pc)
 {
   unsigned int insn;
 
-  (*the_target->read_memory) (pc, (unsigned char *) &insn,
-                              csky_breakpoint_len);
-  csky_debug_info (("csky_breakpoint_at used_trap1_flag is %d\n", used_trap1_flag));
-  if (used_trap1_flag)
-    {
-#ifndef __CSKYABIV2__
-      if (insn == ABIV1_INSN_TRAP1)
-        return 1;
-#else
-      if (insn == ABIV2_INSN_TRAP1)
-        return 1;
-#endif
-      return 0;
-    }
-  else
-    {
-      if (insn == csky_breakpoint)
-        return 1;
-      return 0;
-    }
+  /* Here just read 2 bytes, as csky_breakpoint_illegal_4_v2
+     is double of csky_breakpoint_illegal_2_v2, csky_breakpoint_bkpt_4
+     is double of csky_breakpoint_bkpt_2. Others are 2 bytes bkpt.  */
+  (*the_target->read_memory) (pc, (unsigned char *) &insn, 2);
+
+#ifdef __CSKYABIV2__
+#ifdef CSKY_KERNEL_CODE_BTHAN_4X
+  if (insn == csky_breakpoint_illegal_2_v2)
+    return 1;
+#else  /* not CSKY_KERNEL_CODE_BTHAN_4X */
+  if (insn == csky_breakpoint_bkpt_2)
+    return 1;
+#endif /* not CSKY_KERNEL_CODE_BTHAN_4X */
+
+#else  /* not __CSKYABIV2__ */
+#ifdef CSKY_KERNEL_CODE_BTHAN_4X
+  if (insn == csky_breakpoint_trap1_v1)
+    return 1;
+#else  /* not CSKY_KERNEL_CODE_BTHAN_4X */
+  if (ret == csky_breakpoint_bkpt_2)
+    return 1
+#endif /* not CSKY_KERNEL_CODE_BTHAN_4X */
+#endif /* not __CSKYABIV2__ */
+
+  return 0;
 }
 
 /* Support for hardware single step.  */
