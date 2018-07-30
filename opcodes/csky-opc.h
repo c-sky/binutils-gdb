@@ -2919,7 +2919,7 @@ const struct _csky_opcode csky_v2_opcodes[] =
         OPCODE_INFO0(0xc1809820),
         CSKYV2_ISA_10E60),
   OP32("icache.iva",
-        OPCODE_INFO1(0xc0a09020, (16_20, AREG, OPRND_SHIFT_0_BIT)),
+        OPCODE_INFO1(0xc1609020, (16_20, AREG, OPRND_SHIFT_0_BIT)),
         CSKYV2_ISA_10E60),
   OP32("dcache.iall",
         OPCODE_INFO0(0xc1009420),
