@@ -5528,6 +5528,7 @@ elf32_csky_obj_attrs_handle_unknown (bfd *abfd, int tag)
 #define TARGET_LITTLE_NAME                    "elf32-csky-little"
 #define ELF_ARCH                              bfd_arch_csky
 #define ELF_MACHINE_CODE                      EM_CSKY
+#define ELF_MACHINE_ALT1                      EM_CSKY_OLD
 #define ELF_MAXPAGESIZE                       0x1000
 #define elf_info_to_howto                     csky_elf_info_to_howto
 #define elf_info_to_howto_rel                 NULL
