@@ -71,6 +71,7 @@ tilegx*)		gdb_host_cpu=tilegx ;;
 x86_64*)		gdb_host_cpu=i386 ;;
 m32r*)			gdb_host_cpu=m32r ;;
 xtensa*)		gdb_host_cpu=xtensa ;;
+csky*)		        gdb_host_cpu=csky ;;
 *)			gdb_host_cpu=$host_cpu ;;
 
 esac
@@ -186,6 +187,7 @@ x86_64-*-cygwin*)	gdb_host=cygwin64 ;;
 m32r*-*-linux*)          gdb_host=linux ;;
 
 xtensa*-*-linux*)	gdb_host=linux ;;
+csky-*linux*)	        gdb_host=linux ;;
 
 esac
 
