@@ -90,6 +90,7 @@
 /* For lrw16, 112 average size for a function.  */
 #define v2_SPANEXIT_ELRW  (1016-112)
 #define MAX_POOL_SIZE     (1024/4)
+#define MAX_TLS_COUNT     (4096)
 #define POOL_END_LABEL    ".LE"
 #define POOL_START_LABEL  ".LS"
 
@@ -589,7 +590,7 @@ struct _csky_long_option csky_long_opts[] =
 const relax_typeS *md_relax_table = NULL;
 struct literal * literal_insn_offset;
 static struct literal litpool [MAX_POOL_SIZE];
-static struct literal litpool_tls [MAX_POOL_SIZE*4];
+static struct literal litpool_tls [MAX_TLS_COUNT];
 static unsigned poolsize = 0;
 static unsigned poolnumber = 0;
 static unsigned long poolspan = 0;
@@ -5017,9 +5018,9 @@ csky_cons_fix_new (fragS *frag,
           || BFD_RELOC_CKCORE_TLS_LDM32 == insn_reloc )
         {
           exp->X_add_number = (offsetT) (&literal_insn_offset->tls_addend);
-          if(count_tls > 1024)
+          if(count_tls > MAX_TLS_COUNT)
             {
-              as_bad (_("tls variable number %u more than 1024,array overflow"), count_tls);
+              as_bad (_("tls variable number %u more than %d,array overflow"), count_tls, MAX_TLS_COUNT);
             }
         }
     }
