@@ -5179,6 +5179,7 @@ md_apply_fix (fixS   *fixP,
   /* We can handle these relocs.  */
   switch (fixP->fx_r_type)
     {
+      case BFD_RELOC_32_PCREL:
       case BFD_RELOC_CKCORE_PCREL32:
         break;
       case BFD_RELOC_VTABLE_INHERIT:
@@ -5409,6 +5410,10 @@ arelent *
 tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixP)
 {
   arelent *rel;
+
+  if (fixP->fx_pcrel
+      && fixP->fx_r_type == BFD_RELOC_CKCORE_ADDR32)
+    fixP->fx_r_type = BFD_RELOC_CKCORE_PCREL32;
 
   rel = xmalloc (sizeof (arelent));
   rel->sym_ptr_ptr = xmalloc (sizeof (asymbol *));

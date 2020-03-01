@@ -32,6 +32,9 @@
 
 #define TARGET_BYTES_BIG_ENDIAN 0
 
+/* .-foo gets turned into PC relative relocs.  */
+#define DIFF_EXPR_OK 1
+
 #define MD_PCREL_FROM_SECTION(F,S) md_pcrel_from_section(F,S)
 
 #define TC_GENERIC_RELAX_TABLE     csky_relax_table
