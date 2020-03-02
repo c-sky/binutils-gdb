@@ -32,6 +32,9 @@
 
 #define TARGET_BYTES_BIG_ENDIAN 0
 
+/* .-foo gets turned into PC relative relocs.  */
+#define DIFF_EXPR_OK 1
+
 #define MD_PCREL_FROM_SECTION(F,S) md_pcrel_from_section(F,S)
 
 #define TC_GENERIC_RELAX_TABLE     csky_relax_table
@@ -60,6 +63,8 @@
 #define DWARF2_DEFAULT_RETURN_COLUMN 15
 #define DWARF2_CIE_DATA_ALIGNMENT (-4)
 
+/* Do something before section changed.  */
+#define md_flush_pending_output()  csky_flush_pending_output()
 typedef enum
 {
     MAP_UNDEFINED=0,
@@ -88,6 +93,7 @@ extern bfd_boolean csky_fix_adjustable (fixS * fixP);
 extern void csky_cfi_frame_initial_instructions (void);
 extern int tc_csky_regname_to_dw2regnum (char *regname);
 extern long csky_relax_frag (segT segment, fragS *fragP, long stretch);
+extern void csky_flush_pending_output (void);
 
 #ifdef OBJ_ELF
 const char * elf32_csky_target_format (void);

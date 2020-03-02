@@ -5179,6 +5179,7 @@ md_apply_fix (fixS   *fixP,
   /* We can handle these relocs.  */
   switch (fixP->fx_r_type)
     {
+      case BFD_RELOC_32_PCREL:
       case BFD_RELOC_CKCORE_PCREL32:
         break;
       case BFD_RELOC_VTABLE_INHERIT:
@@ -5409,6 +5410,10 @@ arelent *
 tc_gen_reloc (asection *section ATTRIBUTE_UNUSED, fixS *fixP)
 {
   arelent *rel;
+
+  if (fixP->fx_pcrel
+      && fixP->fx_r_type == BFD_RELOC_CKCORE_ADDR32)
+    fixP->fx_r_type = BFD_RELOC_CKCORE_PCREL32;
 
   rel = xmalloc (sizeof (arelent));
   rel->sym_ptr_ptr = xmalloc (sizeof (asymbol *));
@@ -7367,6 +7372,7 @@ csky_cons (int nbytes)
      as the directives that we are intercepting may be being used
      to build a switch table, and we must not interfere with its
      contents.  Instead we cross our fingers and pray...  */
+  check_literals (2, 0);
 }
 
 static void
@@ -7383,6 +7389,7 @@ csky_float_cons (int float_type)
       floating point values, but it is still likely that an indexed
       table of floating point constants is being created by these
       directives, so again we must not interfere with their placement.  */
+  check_literals (2, 0);
 }
 
 static void
@@ -7667,4 +7674,10 @@ int tc_csky_regname_to_dw2regnum (char *regname)
      the abi version.  */
   reg_num = csky_get_reg_val (regname, &len);
   return reg_num;
+}
+
+void
+csky_flush_pending_output (void)
+{
+  dump_literals (1);
 }
