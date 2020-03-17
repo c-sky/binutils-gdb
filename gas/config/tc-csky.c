@@ -588,13 +588,11 @@ struct _csky_long_option csky_long_opts[] =
 };
 
 const relax_typeS *md_relax_table = NULL;
-struct literal * literal_insn_offset;
 static struct literal litpool [MAX_POOL_SIZE];
-static struct literal litpool_tls [MAX_TLS_COUNT];
 static unsigned poolsize = 0;
 static unsigned poolnumber = 0;
 static unsigned long poolspan = 0;
-static unsigned  count_tls = 0;
+static unsigned long ext_poll_size = 0;
 static unsigned int SPANPANIC;
 static unsigned int SPANCLOSE;
 static unsigned int SPANEXIT;
@@ -1367,11 +1365,12 @@ dump_literals (int isforce)
           || insn_reloc == BFD_RELOC_CKCORE_TLS_LDM32
           || insn_reloc == BFD_RELOC_CKCORE_TLS_GD32)
         {
-          p_tls = litpool_tls + count_tls;
-          p_tls->tls_addend.frag = p->tls_addend.frag;
-          p_tls->tls_addend.offset = p->tls_addend.offset;
-          literal_insn_offset = p_tls;
-          count_tls++;
+	  /* For tls, tls_addend.frag.fr_address are not sure,
+	     shoud save the frag and the offset, until calculate the offset in apply_fix. */
+	  struct tls_addend *new_tls = bfd_alloc (stdoutput, sizeof (*new_tls));
+	  new_tls->frag = p->tls_addend.frag;
+	  new_tls->offset = p->tls_addend.offset;
+	  p->e.X_add_number = (offsetT)new_tls;
         }
       if(p->isdouble)
         {
@@ -1477,7 +1476,6 @@ enter_literal (expressionS *e,
     {
       p->tls_addend.frag  = frag_now;
       p->tls_addend.offset = csky_insn.output-frag_now->fr_literal;
-      literal_insn_offset = p;
     }
   poolsize += (p->isdouble?2:1);
   return i;
@@ -5013,16 +5011,6 @@ csky_cons_fix_new (fragS *frag,
       || (BFD_RELOC_CKCORE_TLS_IE32 == insn_reloc))
     {
       reloc = insn_reloc;
-      if (BFD_RELOC_CKCORE_TLS_IE32 == insn_reloc
-          || BFD_RELOC_CKCORE_TLS_GD32 == insn_reloc
-          || BFD_RELOC_CKCORE_TLS_LDM32 == insn_reloc )
-        {
-          exp->X_add_number = (offsetT) (&literal_insn_offset->tls_addend);
-          if(count_tls > MAX_TLS_COUNT)
-            {
-              as_bad (_("tls variable number %u more than %d,array overflow"), count_tls, MAX_TLS_COUNT);
-            }
-        }
     }
   else switch (len)
     {
@@ -6025,11 +6013,13 @@ v1_work_lrw (void)
     }
   else
     {
+      struct literal *p =NULL;
       csky_insn.inst = csky_insn.opcode->op16[0].opcode;
       csky_insn.inst |= reg << 8;
       if (output_literal)
         {
           int n = enter_literal (&csky_insn.e1, 0, 0, 0);
+	  p = &litpool [n];
 
           /* Create a reference to pool entry.  */
           csky_insn.e1.X_op = O_symbol;
@@ -6041,9 +6031,9 @@ v1_work_lrw (void)
           || insn_reloc == BFD_RELOC_CKCORE_TLS_LDM32
           || insn_reloc == BFD_RELOC_CKCORE_TLS_IE32)
         {
-          literal_insn_offset->tls_addend.frag  = frag_now;
-          literal_insn_offset->tls_addend.offset =
-            csky_insn.output - literal_insn_offset->tls_addend.frag->fr_literal;
+          p->tls_addend.frag  = frag_now;
+          p->tls_addend.offset =
+            csky_insn.output - p->tls_addend.frag->fr_literal;
         }
       fix_new_exp (frag_now, csky_insn.output - frag_now->fr_literal, 2,
                    &csky_insn.e1, 1, BFD_RELOC_CKCORE_PCREL_IMM8BY4);
@@ -6822,6 +6812,7 @@ v2_work_lrw (void)
   int reg = csky_insn.val[0];
   int output_literal = csky_insn.val[1];
   int is_done = 0;
+  struct literal *p = NULL;
 
   /* If the second operand is O_constant, We can use movi/moih
      instead of lrw.  */
@@ -6865,6 +6856,7 @@ v2_work_lrw (void)
   if (output_literal)
     {
       int n = enter_literal (&csky_insn.e1, 0, 0, 0);
+      p = &litpool [n];
       /* Create a reference to pool entry.  */
       csky_insn.e1.X_op = O_symbol;
       csky_insn.e1.X_add_symbol = poolsym;
@@ -6886,8 +6878,8 @@ v2_work_lrw (void)
           || insn_reloc == BFD_RELOC_CKCORE_TLS_LDM32
           || insn_reloc == BFD_RELOC_CKCORE_TLS_IE32)
         {
-          literal_insn_offset->tls_addend.frag = frag_now;
-          literal_insn_offset->tls_addend.offset = csky_insn.output-frag_now->fr_literal;
+          p->tls_addend.frag = frag_now;
+          p->tls_addend.offset = csky_insn.output-frag_now->fr_literal;
         }
       csky_insn.inst = csky_insn.opcode->op16[0].opcode | (reg << 5);
       csky_insn.max = 4;
@@ -6902,8 +6894,8 @@ v2_work_lrw (void)
           || insn_reloc == BFD_RELOC_CKCORE_TLS_LDM32
           || insn_reloc == BFD_RELOC_CKCORE_TLS_IE32 )
        {
-          literal_insn_offset->tls_addend.frag = frag_now;
-          literal_insn_offset->tls_addend.offset =
+          p->tls_addend.frag = frag_now;
+          p->tls_addend.offset =
             csky_insn.output-frag_now->fr_literal;
        }
       csky_insn.inst = csky_insn.opcode->op32[0].opcode | (reg << 16);
@@ -6920,7 +6912,7 @@ v2_work_lrw (void)
               || insn_reloc == BFD_RELOC_CKCORE_TLS_LDM32
               || insn_reloc == BFD_RELOC_CKCORE_TLS_IE32)
             {
-              literal_insn_offset->tls_addend.frag = frag_now;
+              p->tls_addend.frag = frag_now;
             }
 
           csky_insn.output = frag_var(rs_machine_dependent,
@@ -6933,10 +6925,10 @@ v2_work_lrw (void)
               || insn_reloc == BFD_RELOC_CKCORE_TLS_LDM32
               || insn_reloc == BFD_RELOC_CKCORE_TLS_IE32)
             {
-              if (literal_insn_offset->tls_addend.frag->fr_next != frag_now)
-                literal_insn_offset->tls_addend.frag = literal_insn_offset->tls_addend.frag->fr_next;
-              literal_insn_offset->tls_addend.offset =
-                csky_insn.output - literal_insn_offset->tls_addend.frag->fr_literal;
+              if (p->tls_addend.frag->fr_next != frag_now)
+                p->tls_addend.frag = p->tls_addend.frag->fr_next;
+              p->tls_addend.offset =
+                csky_insn.output - p->tls_addend.frag->fr_literal;
             }
           csky_insn.inst = csky_insn.opcode->op16[0].opcode | (reg << 5);
           csky_insn.max = LRW_DISP16_LEN;
@@ -6950,8 +6942,8 @@ v2_work_lrw (void)
               || insn_reloc == BFD_RELOC_CKCORE_TLS_LDM32
               || insn_reloc == BFD_RELOC_CKCORE_TLS_IE32 )
            {
-              literal_insn_offset->tls_addend.frag = frag_now;
-              literal_insn_offset->tls_addend.offset =
+              p->tls_addend.frag = frag_now;
+              p->tls_addend.offset =
                 csky_insn.output-frag_now->fr_literal;
            }
           csky_insn.inst = csky_insn.opcode->op32[0].opcode | (reg << 16);
