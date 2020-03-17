@@ -19,4 +19,6 @@
 
 #include "obj-format.h"
 
+#ifndef _CSKY_ABI
 #define _CSKY_ABI    2
+#endif
