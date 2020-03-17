@@ -20,6 +20,8 @@
 #ifndef TC_CSKY
 #define TC_CSKY 1
 
+#include "targ-env.h"
+
 #define WORKING_DOT_WORD
 
 #define TARGET_ARCH    bfd_arch_csky
@@ -33,7 +35,9 @@
 #define TARGET_BYTES_BIG_ENDIAN 0
 
 /* .-foo gets turned into PC relative relocs.  */
+#if _CSKY_ABI == 2
 #define DIFF_EXPR_OK 1
+#endif
 
 #define MD_PCREL_FROM_SECTION(F,S) md_pcrel_from_section(F,S)
 
