@@ -488,6 +488,8 @@ static int do_use_branchstub = -1;
 static int do_use_branchstub = 0;
 #endif
 
+static int last_transfer_kind = 0;
+
 /* This table is used to handle options which will be set a value to a veriable.  */
 enum
 {
@@ -1484,6 +1486,7 @@ enter_literal (expressionS *e,
 static void
 check_literals (int kind, int offset)
 {
+  last_transfer_kind = kind;
   poolspan += offset;
 
   /* SPANCLOSE and SPANEXIT are smaller numbers than SPANPANIC.
@@ -7487,6 +7490,11 @@ csky_s_align_ptwo (int arg)
   /*get the .align's first absolute number*/
   char * temp_pointer = input_line_pointer;
   int align = get_absolute_expression ();
+
+#ifdef md_flush_pending_output
+  md_flush_pending_output();
+#endif
+
   check_literals (0, (1 << align)-1);
   input_line_pointer = temp_pointer;
 
@@ -7671,5 +7679,8 @@ int tc_csky_regname_to_dw2regnum (char *regname)
 void
 csky_flush_pending_output (void)
 {
-  dump_literals (1);
+  if (last_transfer_kind > 0)
+    dump_literals (0);
+  else
+    dump_literals (1);
 }
