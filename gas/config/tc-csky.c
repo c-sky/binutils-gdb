@@ -7428,23 +7428,6 @@ csky_s_data (int ignore)
 static void
 csky_s_section (int ignore)
 {
-  /* Scan forwards to find the name of the section.  If the section
-     being switched to is ".line" then this is a DWARF1 debug section
-     which is arbitrarily placed inside generated code.  In this case
-     do not dump the literal pool because it is a) inefficient and
-     b) would require the generation of extra code to jump around the
-     pool.  */
-  char * ilp = input_line_pointer;
-
-  while (*ilp != 0 && ISSPACE (*ilp))
-    ++ ilp;
-
-  if (strncmp (ilp, ".line", 5) == 0
-      && (ISSPACE (ilp[5]) || *ilp == '\n' || *ilp == '\r'))
-    ;
-  else
-    dump_literals (0);
-
 #ifdef OBJ_ELF
   obj_elf_section (ignore);
 #endif
