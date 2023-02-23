@@ -2981,7 +2981,8 @@ elf32_csky_merge_attributes (bfd *ibfd, struct bfd_link_info *info)
 	case Tag_CSKY_DSP_VERSION:
 	  if (out_attr[i].i == 0)
 	    out_attr[i].i = in_attr[i].i;
-	  else if (out_attr[i].i != in_attr[i].i)
+	  else if (out_attr[i].i != in_attr[i].i
+		   && in_attr[i].i != 0)
 	    {
 	      _bfd_error_handler
 		(_("Error: %pB and %pB has different DSP version"), ibfd, obfd);
