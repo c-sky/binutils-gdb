@@ -7473,6 +7473,9 @@ subject, see the hardware manufacturer's manual.
 @ifset CRIS
 * CRIS-Dependent::              CRIS Dependent Features
 @end ifset
+@ifset CSKY
+* CSKY-Dependent::              CSKY Dependent Features
+@end ifset
 @ifset D10V
 * D10V-Dependent::              D10V Dependent Features
 @end ifset
@@ -7652,6 +7655,10 @@ subject, see the hardware manufacturer's manual.
 
 @ifset CRIS
 @include c-cris.texi
+@end ifset
+
+@ifset CSKY
+@include c-csky.texi
 @end ifset
 
 @ifset Renesas-all
@@ -8156,6 +8163,8 @@ Several engineers at Cygnus Support have also provided many small bug fixes and
 configuration enhancements.
 
 Jon Beniston added support for the Lattice Mico32 architecture.
+
+Lifang Xia from C-SKY Inc.@: added support for C-SKY architecture.
 
 Many others have contributed large or small bugfixes and enhancements.  If
 you have contributed significant work and are not mentioned on this list, and

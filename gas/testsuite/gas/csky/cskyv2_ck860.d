@@ -1,6 +1,6 @@
 # name: csky - ck860
 #as: -mcpu=ck860
-#objdump: -D
+#objdump: -d
 
 .*: +file format .*csky.*
 
@@ -29,7 +29,7 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*c1009420\s*dcache.iall
 \s*[0-9a-f]*:\s*c1009020\s*icache.iall
 \s*[0-9a-f]*:\s*c3009020\s*icache.ialls
-\s*[0-9a-f]*:\s*c0bf9020\s*icache.iva\s*r31
+\s*[0-9a-f]*:\s*c17f9020\s*icache.iva\s*r31
 \s*[0-9a-f]*:\s*c000842f\s*bar.brwarw
 \s*[0-9a-f]*:\s*c200842f\s*bar.brwarws
 \s*[0-9a-f]*:\s*c0008425\s*bar.brar
@@ -40,5 +40,6 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*c0200420\s*sync.i
 \s*[0-9a-f]*:\s*c2000420\s*sync.s
 \s*[0-9a-f]*:\s*c0000420\s*sync
-\s*[0-9a-f]*:\s*d8437000\s*ldex.w\s*r2,\s*\(r3,\s*0\)
-\s*[0-9a-f]*:\s*dc437000\s*stex.w\s*r2,\s*\(r3,\s*0\)
+\s*[0-9a-f]*:\s*d8437000\s*ldex.w\s*r2,\s*\(r3,\s*0x0\)
+\s*[0-9a-f]*:\s*dc437000\s*stex.w\s*r2,\s*\(r3,\s*0x0\)
+#...

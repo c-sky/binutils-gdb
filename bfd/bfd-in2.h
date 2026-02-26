@@ -2222,9 +2222,13 @@ enum bfd_architecture
 #define bfd_mach_ck801         3
 #define bfd_mach_ck802         4
 #define bfd_mach_ck803         5
+/* NOTICE: 804 same as 803. */
+#define bfd_mach_ck804         5
+#define bfd_mach_ck805         805
 #define bfd_mach_ck807         6
 #define bfd_mach_ck810         7
 #define bfd_mach_ck860         8
+#define bfd_mach_ck800         800
   bfd_arch_mep,
 #define bfd_mach_mep           1
 #define bfd_mach_mep_h1        0x6831
@@ -4493,6 +4497,10 @@ short offset into 11 bits.  */
   BFD_RELOC_CKCORE_IRELATIVE,
   BFD_RELOC_CKCORE_PCREL_BLOOP_IMM4BY4,
   BFD_RELOC_CKCORE_PCREL_BLOOP_IMM12BY4,
+  BFD_RELOC_CKCORE_PCREL_VLRW_IMM12BY1,
+  BFD_RELOC_CKCORE_PCREL_VLRW_IMM12BY2,
+  BFD_RELOC_CKCORE_PCREL_VLRW_IMM12BY4,
+  BFD_RELOC_CKCORE_PCREL_VLRW_IMM12BY8,
 /* CSKY RELOCATIONS END.  */
 
 /* Toshiba Media Processor Relocations.  */

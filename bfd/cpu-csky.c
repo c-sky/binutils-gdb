@@ -50,10 +50,14 @@ static const bfd_arch_info_type arch_info_struct[] =
   N (bfd_mach_ck801,   "csky:ck801",    FALSE, & arch_info_struct[3]),
   N (bfd_mach_ck802,   "csky:ck802",    FALSE, & arch_info_struct[4]),
   N (bfd_mach_ck803,   "csky:ck803",    FALSE, & arch_info_struct[5]),
-  N (bfd_mach_ck807,   "csky:ck807",    FALSE, & arch_info_struct[6]),
-  N (bfd_mach_ck810,   "csky:ck810",    FALSE, & arch_info_struct[7]),
+  N (bfd_mach_ck805,   "csky:ck805",    FALSE, & arch_info_struct[6]),
+  N (bfd_mach_ck807,   "csky:ck807",    FALSE, & arch_info_struct[7]),
+  N (bfd_mach_ck810,   "csky:ck810",    FALSE, & arch_info_struct[8]),
   /* ck860 is multi-core arch.  */
-  N (bfd_mach_ck860,   "csky:ck860",    FALSE, & arch_info_struct[8]),
+  N (bfd_mach_ck860,   "csky:ck860",    FALSE, & arch_info_struct[9]),
+  /* ck800 is a special one, it includes all instructions,
+     exception elrw and bsr16.  */
+  N (bfd_mach_ck800,   "csky:ck800",    FALSE, & arch_info_struct[10]),
   N (bfd_mach_ck_unknown, "csky:any",   FALSE, NULL)
 };
 

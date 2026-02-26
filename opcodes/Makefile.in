@@ -1441,6 +1441,9 @@ $(srcdir)/aarch64-dis-2.c: @MAINT@ aarch64-gen$(exeext_for_build)
 $(srcdir)/aarch64-opc-2.c: @MAINT@ aarch64-gen$(exeext_for_build)
 	./aarch64-gen$(exeext_for_build) --gen-opc > $@
 
+csky-dis.lo : $(INCDIR)/opcode/csky-reg-def.h $(INCDIR)/opcode/csky.h \
+	$(INCDIR)/elf/csky.h $(srcdir)/csky-opc.h
+
 i386-gen$(EXEEXT_FOR_BUILD): i386-gen.o $(BUILD_LIB_DEPS)
 	$(LINK_FOR_BUILD) i386-gen.o $(BUILD_LIBS)
 

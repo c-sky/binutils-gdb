@@ -176,6 +176,7 @@ case ${generic_target} in
 
   crx-*-elf*)				fmt=elf ;;
 
+  csky*-none*)				fmt=elf em=csky_abiv2 ;;
   csky*-elfabiv2)			fmt=elf em=csky_abiv2 ;;
   csky*-elf)			fmt=elf em=csky_abiv1 ;;
   csky*-linux*abiv2)		fmt=elf em=csky_abiv2_linux ;;

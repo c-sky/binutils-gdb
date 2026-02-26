@@ -91,6 +91,10 @@ START_RELOC_NUMBERS (elf_csky_reloc_type)
     RELOC_NUMBER(R_CKCORE_IRELATIVE, 62)
     RELOC_NUMBER(R_CKCORE_PCREL_BLOOP_IMM4BY4, 63)
     RELOC_NUMBER(R_CKCORE_PCREL_BLOOP_IMM12BY4, 64)
+    RELOC_NUMBER(R_CKCORE_PCREL_VLRW_IMM12BY1, 65)
+    RELOC_NUMBER(R_CKCORE_PCREL_VLRW_IMM12BY2, 66)
+    RELOC_NUMBER(R_CKCORE_PCREL_VLRW_IMM12BY4, 67)
+    RELOC_NUMBER(R_CKCORE_PCREL_VLRW_IMM12BY8, 68)
 END_RELOC_NUMBERS (R_CKCORE_MAX)
 
 /* Additional section types.  */
@@ -101,21 +105,73 @@ enum
 {
   /* 0-3 are generic. */
   /* Arch name for this object file.  */
-  Tag_CSKY_ARCH_NAME = 5,
-  Tag_CSKY_CPU_NAME = 6,
+  Tag_CSKY_ARCH_NAME = 4,
+  Tag_CSKY_CPU_NAME = 5,
+
+  /* ISA flags for this object file.  */
+  Tag_CSKY_ISA_FLAGS,
+  Tag_CSKY_ISA_EXT_FLAGS,
+
   /* CSKY DSP version used by this object file.  */
-  Tag_CSKY_DSP_VERSION = 7,
+  Tag_CSKY_DSP_VERSION,
+
+  /* CSKY VDSP version used by this object file.  */
+  Tag_CSKY_VDSP_VERSION,
+
+  /* CSKY FPU version used by this object file.  */
+  Tag_CSKY_FPU_VERSION = 0x10,
+  /* FPU ABI.  params: Soft GR/Hard GR/Hard FR. */
+  Tag_CSKY_FPU_ABI,
+  /* Rounding Support.  */
+  Tag_CSKY_FPU_ROUNDING,
+  /* Denormal Support.  */
+  Tag_CSKY_FPU_DENORMAL,
+  /* Exeception Support.  */
+  Tag_CSKY_FPU_Exception,
+  /* Number Module Support("IEEE 754").  */
+  Tag_CSKY_FPU_NUMBER_MODULE,
+  /* Half/Single/Double.  */
+  Tag_CSKY_FPU_HARDFP,
+
+  Tag_CSKY_MAX,
 };
 
 /* Object attribute values.  */
 enum
 {
-  /* Values defined for Tag_GNU_CSKY_DSP_VERSION.  */
-  Val_GNU_CSKY_DSP_VERSION_1 = 1,
-  Val_GNU_CSKY_DSP_VERSION_2 = 2,
-  Val_GNU_CSKY_DSP_VERSION_3 = 3,
+  /* Values defined for Tag_CSKY_DSP_VERSION.  */
+  VAL_CSKY_DSP_VERSION_EXTENSION = 1,   /* hi-lo DSP extension.  */
+  VAL_CSKY_DSP_VERSION_2         = 2,   /* CK803s EDSP.  */
+};
+
+enum
+{
+  /* Values defined for Tag_CSKY_VDSP_VERSION.  */
+  VAL_CSKY_VDSP_VERSION_1         = 1,  /* VDSP version 1.  */
+  VAL_CSKY_VDSP_VERSION_2,
+  VAL_CSKY_VDSP_VERSION_3,
+};
+
+enum
+{
+  /* Values defined for Tag_CSKY_FPU_VERSION.  */
+  VAL_CSKY_FPU_VERSION_1          = 1,  /* ABIV1 FPU.  */
+  VAL_CSKY_FPU_VERSION_2,               /* Single FPU.  */
+  VAL_CSKY_FPU_VERSION_3,               /* CK860 float.  */
+};
+
+enum
+{
+  VAL_CSKY_FPU_ABI_SOFT = 1,
+  VAL_CSKY_FPU_ABI_SOFTFP,
+  VAL_CSKY_FPU_ABI_HARD,
+};
+
+enum
+{
+  VAL_CSKY_FPU_HARDFP_Half = 1,
+  VAL_CSKY_FPU_HARDFP_Single = 2,
+  VAL_CSKY_FPU_HARDFP_Double = 4,
 };
 
 #endif /* _ELF_CSKY_H  */
-
-

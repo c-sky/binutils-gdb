@@ -1,6 +1,6 @@
 # name: csky - all
 #as: -mcpu=ck810 -W
-#objdump: -D
+#objdump: -d
 
 .*: +file format .*csky.*
 
@@ -14,10 +14,10 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*c6824848\s*lsri\s*r8,\s*r2,\s*20
 \s*[0-9a-f]*:\s*5227\s*asri\s*r1,\s*r2,\s*7
 \s*[0-9a-f]*:\s*6049\s*addc\s*r1,\s*r2
-\s*[0-9a-f]*:\s*c4310051\s*addc\s*r17,\s*r17,\s*r1
+\s*[0-9a-f]*:\s*c6210051\s*addc\s*r17,\s*r1,\s*r17
 \s*[0-9a-f]*:\s*c4620041\s*addc\s*r1,\s*r2,\s*r3
 \s*[0-9a-f]*:\s*6049\s*addc\s*r1,\s*r2
-\s*[0-9a-f]*:\s*c6210041\s*addc\s*r1,\s*r1,\s*r17
+\s*[0-9a-f]*:\s*c4310041\s*addc\s*r1,\s*r17,\s*r1
 \s*[0-9a-f]*:\s*c7d20052\s*addc\s*r18,\s*r18,\s*r30
 \s*[0-9a-f]*:\s*604b\s*subc\s*r1,\s*r2
 \s*[0-9a-f]*:\s*c4310111\s*subc\s*r17,\s*r17,\s*r1
@@ -44,8 +44,8 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*e8d00000\s*jmp\s*r16
 \s*[0-9a-f]*:\s*7bc9\s*jsr\s*r2
 \s*[0-9a-f]*:\s*e8f00000\s*jsr\s*r16
-\s*[0-9a-f]*:\s*783c\s*rts
-\s*[0-9a-f]*:\s*e8cf0000\s*rts
+\s*[0-9a-f]*:\s*783c\s*jmp\s*r15
+\s*[0-9a-f]*:\s*e8cf0000\s*jmp\s*r15
 \s*[0-9a-f]*:\s*6c03\s*mov\s*r0, \s*r0
 \s*[0-9a-f]*:\s*c4364036\s*lsl\s*r22,\s*r22,\s*r1
 \s*[0-9a-f]*:\s*c4224041\s*lsr\s*r1,\s*r2,\s*r1
@@ -67,23 +67,23 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*c4419421\s*mulsw\s*r1,\s*r1,\s*r2
 \s*[0-9a-f]*:\s*8344\s*ld.b\s*r2,\s*\(r3,\s*0x4\)
 \s*[0-9a-f]*:\s*8b42\s*ld.h\s*r2,\s*\(r3,\s*0x4\)
-\s*[0-9a-f]*:\s*9841\s*ld.w\s*r2,\s*\(sp,\s*0x4\)
+\s*[0-9a-f]*:\s*9841\s*ld.w\s*r2,\s*\(r14,\s*0x4\)
 \s*[0-9a-f]*:\s*a344\s*st.b\s*r2,\s*\(r3,\s*0x4\)
 \s*[0-9a-f]*:\s*ab42\s*st.h\s*r2,\s*\(r3,\s*0x4\)
-\s*[0-9a-f]*:\s*b841\s*st.w\s*r2,\s*\(sp,\s*0x4\)
+\s*[0-9a-f]*:\s*b841\s*st.w\s*r2,\s*\(r14,\s*0x4\)
 \s*[0-9a-f]*:\s*d9030004\s*ld.b\s*r8,\s*\(r3,\s*0x4\)
 \s*[0-9a-f]*:\s*d8481002\s*ld.h\s*r2,\s*\(r8,\s*0x4\)
-\s*[0-9a-f]*:\s*9841\s*ld.w\s*r2,\s*\(sp,\s*0x4\)
+\s*[0-9a-f]*:\s*9841\s*ld.w\s*r2,\s*\(r14,\s*0x4\)
 \s*[0-9a-f]*:\s*dc480004\s*st.b\s*r2,\s*\(r8,\s*0x4\)
 \s*[0-9a-f]*:\s*dc481002\s*st.h\s*r2,\s*\(r8,\s*0x4\)
-\s*[0-9a-f]*:\s*dd0e2001\s*st.w\s*r8,\s*\(sp,\s*0x4\)
+\s*[0-9a-f]*:\s*dd0e2001\s*st.w\s*r8,\s*\(r14,\s*0x4\)
 \s*[0-9a-f]*:\s*d8434003\s*ld.bs\s*r2,\s*\(r3,\s*0x3\)
 \s*[0-9a-f]*:\s*d8433001\s*ld.d\s*r2,\s*\(r3,\s*0x4\)
 \s*[0-9a-f]*:\s*dc433001\s*st.d\s*r2,\s*\(r3,\s*0x4\)
 \s*[0-9a-f]*:\s*dc437001\s*stex.w\s*r2,\s*\(r3,\s*0x4\)
 \s*[0-9a-f]*:\s*d8437001\s*ldex.w\s*r2,\s*\(r3,\s*0x4\)
-\s*[0-9a-f]*:\s*140c\s*addi\s*sp,\s*sp,\s*48
-\s*[0-9a-f]*:\s*1b01\s*addi\s*r3,\s*sp,\s*4
+\s*[0-9a-f]*:\s*140c\s*addi\s*r14,\s*r14,\s*48
+\s*[0-9a-f]*:\s*1b01\s*addi\s*r3,\s*r14,\s*4
 \s*[0-9a-f]*:\s*2113\s*addi\s*r1,\s*20
 \s*[0-9a-f]*:\s*2113\s*addi\s*r1,\s*20
 \s*[0-9a-f]*:\s*e6b50013\s*addi\s*r21,\s*r21,\s*20
@@ -92,16 +92,16 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*e5040000\s*addi\s*r8,\s*r4,\s*1
 \s*[0-9a-f]*:\s*e4240008\s*addi\s*r1,\s*r4,\s*9
 \s*[0-9a-f]*:\s*cc3c0008\s*addi\s*r1,\s*r28,\s*9
-\s*[0-9a-f]*:\s*e46e0000\s*addi\s*r3,\s*sp,\s*1
-\s*[0-9a-f]*:\s*e46e03ff\s*addi\s*r3,\s*sp,\s*1024
-\s*[0-9a-f]*:\s*e5ce0032\s*addi\s*sp,\s*sp,\s*51
-\s*[0-9a-f]*:\s*e5ce01ff\s*addi\s*sp,\s*sp,\s*512
+\s*[0-9a-f]*:\s*e46e0000\s*addi\s*r3,\s*r14,\s*1
+\s*[0-9a-f]*:\s*e46e03ff\s*addi\s*r3,\s*r14,\s*1024
+\s*[0-9a-f]*:\s*e5ce0032\s*addi\s*r14,\s*r14,\s*51
+\s*[0-9a-f]*:\s*e5ce01ff\s*addi\s*r14,\s*r14,\s*512
 \s*[0-9a-f]*:\s*2113\s*addi\s*r1,\s*20
 \s*[0-9a-f]*:\s*5c42\s*addi\s*r2,\s*r4,\s*1
 \s*[0-9a-f]*:\s*e4440000\s*addi\s*r2,\s*r4,\s*1
-\s*[0-9a-f]*:\s*e46e03ff\s*addi\s*r3,\s*sp,\s*1024
-\s*[0-9a-f]*:\s*e5ce0032\s*addi\s*sp,\s*sp,\s*51
-\s*[0-9a-f]*:\s*142c\s*subi\s*sp,\s*sp,\s*48
+\s*[0-9a-f]*:\s*e46e03ff\s*addi\s*r3,\s*r14,\s*1024
+\s*[0-9a-f]*:\s*e5ce0032\s*addi\s*r14,\s*r14,\s*51
+\s*[0-9a-f]*:\s*142c\s*subi\s*r14,\s*r14,\s*48
 \s*[0-9a-f]*:\s*2913\s*subi\s*r1,\s*20
 \s*[0-9a-f]*:\s*2913\s*subi\s*r1,\s*20
 \s*[0-9a-f]*:\s*e6b51013\s*subi\s*r21,\s*r21,\s*20
@@ -110,12 +110,12 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*e5041000\s*subi\s*r8,\s*r4,\s*1
 \s*[0-9a-f]*:\s*e4241008\s*subi\s*r1,\s*r4,\s*9
 \s*[0-9a-f]*:\s*e43c1008\s*subi\s*r1,\s*r28,\s*9
-\s*[0-9a-f]*:\s*e5ce1032\s*subi\s*sp,\s*sp,\s*51
-\s*[0-9a-f]*:\s*e5ce11ff\s*subi\s*sp,\s*sp,\s*512
+\s*[0-9a-f]*:\s*e5ce1032\s*subi\s*r14,\s*r14,\s*51
+\s*[0-9a-f]*:\s*e5ce11ff\s*subi\s*r14,\s*r14,\s*512
 \s*[0-9a-f]*:\s*2913\s*subi\s*r1,\s*20
 \s*[0-9a-f]*:\s*5c43\s*subi\s*r2,\s*r4,\s*1
 \s*[0-9a-f]*:\s*e4441000\s*subi\s*r2,\s*r4,\s*1
-\s*[0-9a-f]*:\s*e5ce1032\s*subi\s*sp,\s*sp,\s*51
+\s*[0-9a-f]*:\s*e5ce1032\s*subi\s*r14,\s*r14,\s*51
 \s*[0-9a-f]*:\s*60c2\s*subu\s*r3,\s*r0
 \s*[0-9a-f]*:\s*6202\s*subu\s*r8,\s*r0
 \s*[0-9a-f]*:\s*c4030089\s*subu\s*r9,\s*r3,\s*r0
@@ -190,8 +190,8 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*ebe00100\s*push\s*r28
 \s*[0-9a-f]*:\s*ebe00020\s*push\s*r16
 \s*[0-9a-f]*:\s*c4625c42\s*ins\s*r3,\s*r2,\s*4,\s*2
-\s*[0-9a-f]*:\s*c4425483\s*zext\s*r3,\s*r2,\s*4,\s*2
-\s*[0-9a-f]*:\s*c4425883\s*sext\s*r3,\s*r2,\s*4,\s*2
+\s*[0-9a-f]*:\s*c4825503\s*zext\s*r3,\s*r2,\s*8,\s*4
+\s*[0-9a-f]*:\s*c4825903\s*sext\s*r3,\s*r2,\s*8,\s*4
 \s*[0-9a-f]*:\s*e4622002\s*andi\s*r3,\s*r2,\s*2
 \s*[0-9a-f]*:\s*e4623002\s*andni\s*r3,\s*r2,\s* 2
 \s*[0-9a-f]*:\s*e462400c\s*xori\s*r3,\s*r2,\s* 12
@@ -295,8 +295,8 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*6c46\s*nor\s*r1,\s*r1
 \s*[0-9a-f]*:\s*c6312491\s*nor\s*r17,\s*r17,\s*r17
 \s*[0-9a-f]*:\s*7488\s*zextb\s*r2,\s*r2
-\s*[0-9a-f]*:\s*c41355f3\s*zexth\s*r19,\s*r19
-\s*[0-9a-f]*:\s*c41d58fd\s*sextb\s*r29,\s*r29
+\s*[0-9a-f]*:\s*c41355f3\s*zext\s*r19,\s*r19,\s*15,\s*0
+\s*[0-9a-f]*:\s*c41d58fd\s*sext\s*r29,\s*r29,\s*7,\s*0
 \s*[0-9a-f]*:\s*76ef\s*sexth\s*r11,\s*r11
 \s*[0-9a-f]*:\s*c6210821\s*ixh\s*r1,\s*r1,\s*r17
 \s*[0-9a-f]*:\s*c4370857\s*ixw\s*r23,\s*r23,\s*r1
@@ -323,3 +323,4 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*cc480000\s*lrs\.w\s*r2,\s*\[0\].*
 \s*[0-9a-f]*:\s*ec430002\s*ori\s*r2,\s*r3,\s*2
 \s*[0-9a-f]*:\s*ec43000a\s*ori\s*r2,\s*r3,\s*10
+#...

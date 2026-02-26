@@ -13211,20 +13211,111 @@ display_csky_attribute (unsigned char * p,
 {
   unsigned int tag;
   unsigned int len;
+  unsigned int val;
   tag = read_uleb128 (p, &len, end);
   p += len;
 
-  if (tag == Tag_CSKY_ARCH_NAME)
-    {
-      printf ("  Tag_CSKY_ARCH_NAME: ");
+  if (tag >= Tag_CSKY_MAX) {
       return display_tag_value (-1, p, end);
-    }
-  else if (tag == Tag_CSKY_CPU_NAME)
-    {
-      printf ("  Tag_CSKY_CPU_NAME: ");
-      return display_tag_value (-1, p, end);
-    }
+  }
 
+  switch (tag)
+    {
+    case Tag_CSKY_ARCH_NAME:
+      printf ("  Tag_CSKY_ARCH_NAME:\t\t");
+      return display_tag_value (-1, p, end);
+    case Tag_CSKY_CPU_NAME:
+      printf ("  Tag_CSKY_CPU_NAME:\t\t");
+      return display_tag_value (-1, p, end);
+
+    case Tag_CSKY_ISA_FLAGS:
+      printf ("  Tag_CSKY_ISA_FLAGS:\t\t");
+      return display_tag_value (0, p, end);
+    case Tag_CSKY_ISA_EXT_FLAGS:
+      printf ("  Tag_CSKY_ISA_EXT_FLAGS:\t");
+      return display_tag_value (0, p, end);
+
+    case Tag_CSKY_DSP_VERSION:
+      printf ("  Tag_CSKY_DSP_VERSION:\t\t");
+      val = read_uleb128 (p, &len, end);
+      p += len;
+      if (val == VAL_CSKY_DSP_VERSION_EXTENSION)
+        printf ("DSP Extension\n");
+      else if (val == VAL_CSKY_DSP_VERSION_2)
+        printf ("DSP 2.0\n");
+      break;
+
+    case Tag_CSKY_VDSP_VERSION:
+      printf ("  Tag_CSKY_VDSP_VERSION:\t");
+      val = read_uleb128 (p, &len, end);
+      p += len;
+      printf ("VDSP Version %d\n", val);
+      break;
+
+    case Tag_CSKY_FPU_VERSION:
+      printf ("  Tag_CSKY_FPU_VERSION:\t\t");
+      val = read_uleb128 (p, &len, end);
+      p += len;
+      if (val == VAL_CSKY_FPU_VERSION_1)
+        printf ("ABIV1 FPU Version 1\n");
+      else if (val == VAL_CSKY_FPU_VERSION_2)
+        printf ("FPU Version 2\n");
+      else if (val == VAL_CSKY_FPU_VERSION_3)
+        printf ("FPU Version 3\n");
+      break;
+    case Tag_CSKY_FPU_ABI:
+      printf ("  Tag_CSKY_FPU_ABI:\t\t");
+      val = read_uleb128 (p, &len, end);
+      p += len;
+      if (val == VAL_CSKY_FPU_ABI_HARD)
+        printf ("Hard\n");
+      else if (val == VAL_CSKY_FPU_ABI_SOFTFP)
+        printf ("SoftFP\n");
+      else if (val == VAL_CSKY_FPU_ABI_SOFT)
+        printf ("Soft\n");
+      break;
+    case Tag_CSKY_FPU_ROUNDING:
+      val = read_uleb128 (p, &len, end);
+      p += len;
+      if (val == 1) {
+        printf ("  Tag_CSKY_FPU_ROUNDING:\t");
+        printf ("Needed\n");
+      }
+      break;
+    case Tag_CSKY_FPU_DENORMAL:
+      val = read_uleb128 (p, &len, end);
+      p += len;
+      if (val == 1) {
+        printf ("  Tag_CSKY_FPU_DENORMAL:\t");
+        printf ("Needed\n");
+      }
+      break;
+    case Tag_CSKY_FPU_Exception:
+      val = read_uleb128 (p, &len, end);
+      p += len;
+      if (val == 1) {
+        printf ("  Tag_CSKY_FPU_Exception:\t");
+        printf ("Needed\n");
+      }
+      break;
+    case Tag_CSKY_FPU_NUMBER_MODULE:
+      printf ("  Tag_CSKY_FPU_NUMBER_MODULE:\t");
+      return display_tag_value (-1, p, end);
+    case Tag_CSKY_FPU_HARDFP:
+      printf ("  Tag_CSKY_FPU_HARDFP:\t\t");
+      val = read_uleb128 (p, &len, end);
+      p += len;
+      if (val & VAL_CSKY_FPU_HARDFP_Half)
+        printf (" Half");
+      if (val & VAL_CSKY_FPU_HARDFP_Single)
+        printf (" Single");
+      if (val & VAL_CSKY_FPU_HARDFP_Double)
+        printf (" Double");
+      printf ("\n");
+      break;
+    default:
+      return display_tag_value (tag, p, end);
+    }
   return p;
 }
 
@@ -16257,6 +16348,7 @@ process_arch_specific (FILE * file)
     case EM_ARM:
       return process_arm_specific (file);
     case EM_CSKY:
+    case EM_MCORE:
       return process_csky_specific (file);
     case EM_MIPS:
     case EM_MIPS_RS3_LE:

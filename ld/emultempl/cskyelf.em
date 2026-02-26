@@ -228,7 +228,6 @@ elf32_csky_add_stub_section (const char *stub_sec_name,
     {
       return stub_sec;
     }
-
 err_ret:
   einfo ("%X%P: can not make stub section: %E\n");
   return NULL;
@@ -349,7 +348,6 @@ csky_lang_for_each_input_file (void (*func) (lang_input_statement_type *))
 }
 
 #define lang_for_each_input_file csky_lang_for_each_input_file
-
 EOF
 
 # The following is about csky map file.
@@ -408,9 +406,14 @@ csky_ldmul_before_write(void)
       }
     }
 }
+
 void
 csky_ldmul_before_finish (void)
 {
+  /* Flush file to fix Mingw toolchain linker error,
+     The error is caused by fread fail in cache.c(cache_bread_1),
+     error number is 32.  */
+  bfd_flush (link_info.output_bfd);
   if (csky_config.cskymap_filename != NULL)
     csky_lang_map ();
 

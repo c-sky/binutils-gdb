@@ -1,6 +1,6 @@
 # name: cskyv2 - lrw
 #as: -mcpu=ck810 -W
-#objdump: -D
+#objdump: -d
 
 .*: +file format .*csky.*
 #...

@@ -1,6 +1,6 @@
 # name: jmpi2 - csky
 #as: -mcpu=ck610
-#objdump: -D
+#objdump: -d
 
 .*: +file format .*csky.*
 

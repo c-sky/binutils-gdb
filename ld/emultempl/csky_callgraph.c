@@ -756,7 +756,8 @@ find_stack_size_df (bfd * abfd,
           (asymbol **) NULL) !=
           NULL;
 #endif
-  if (output_section != NULL)
+  if (output_section != NULL
+      && output_section->owner != NULL)
     {
       osec_size = output_section->rawsize > output_section->size ?
                   output_section->rawsize : output_section->size;

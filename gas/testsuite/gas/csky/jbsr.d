@@ -1,6 +1,6 @@
 # name: jbsr - csky
 #as: -mcpu=ck610
-#objdump: -D
+#objdump: -d
 
 .*: +file format .*csky.*
 

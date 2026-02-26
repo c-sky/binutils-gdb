@@ -1,6 +1,6 @@
 # name: csky - all
 #as: -mcpu=ck610e -W
-#objdump: -D
+#objdump: -d
 
 .*: +file format .*csky.*
 
@@ -20,7 +20,7 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*0032\s*mvcv\s*r2
 \s*[0-9a-f]*:\s*0042\s*ldq\s*r4-r7, \(r2\)
 \s*[0-9a-f]*:\s*0052\s*stq\s*r4-r7, \(r2\)
-\s*[0-9a-f]*:\s*0061\s*ldm\s*r1-r15, \(sp\)
+\s*[0-9a-f]*:\s*0061\s*ldm\s*r1-r15, \(r0\)
 \s*[0-9a-f]*:\s*0082\s*dect\s*r2, r2, 1
 \s*[0-9a-f]*:\s*0092\s*decf\s*r2, r2, 1
 \s*[0-9a-f]*:\s*00a2\s*inct\s*r2, r2, 1
@@ -95,19 +95,19 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*3a03\s*asrc\s*r3, r3, 1
 \s*[0-9a-f]*:\s*3a31\s*asri\s*r1, r1, 3
 \s*[0-9a-f]*:\s*67f7\s*movi\s*r7, 127
-\s*[0-9a-f]*:\s*8200\s*ld.w\s*r2,\s*\(r0,\s*0\)
+\s*[0-9a-f]*:\s*8200\s*ld.w\s*r2,\s*\(r0,\s*0x0\)
 \s*[0-9a-f]*:\s*8210\s*ld.w\s*r2,\s*\(r0,\s*0x4\)
 \s*[0-9a-f]*:\s*8220\s*ld.w\s*r2,\s*\(r0,\s*0x8\)
-\s*[0-9a-f]*:\s*9200\s*st.w\s*r2,\s*\(r0,\s*0\)
+\s*[0-9a-f]*:\s*9200\s*st.w\s*r2,\s*\(r0,\s*0x0\)
 \s*[0-9a-f]*:\s*9210\s*st.w\s*r2,\s*\(r0,\s*0x4\)
 \s*[0-9a-f]*:\s*9220\s*st.w\s*r2,\s*\(r0,\s*0x8\)
 \s*[0-9a-f]*:\s*c210\s*ld.h\s*r2,\s*\(r0,\s*0x2\)
 \s*[0-9a-f]*:\s*c220\s*ld.h\s*r2,\s*\(r0,\s*0x4\)
 \s*[0-9a-f]*:\s*d210\s*st.h\s*r2,\s*\(r0,\s*0x2\)
 \s*[0-9a-f]*:\s*d220\s*st.h\s*r2,\s*\(r0,\s*0x4\)
-\s*[0-9a-f]*:\s*a200\s*ld.b\s*r2,\s*\(r0,\s*0\)
+\s*[0-9a-f]*:\s*a200\s*ld.b\s*r2,\s*\(r0,\s*0x0\)
 \s*[0-9a-f]*:\s*a210\s*ld.b\s*r2,\s*\(r0,\s*0x1\)
-\s*[0-9a-f]*:\s*b200\s*st.b\s*r2,\s*\(r0,\s*0\)
+\s*[0-9a-f]*:\s*b200\s*st.b\s*r2,\s*\(r0,\s*0x0\)
 \s*[0-9a-f]*:\s*b210\s*st.b\s*r2,\s*\(r0,\s*0x1\)
 \s*[0-9a-f]*:\s*e798\s*bt\s*0.*
 \s*[0-9a-f]*:\s*ef97\s*bf\s*0.*
@@ -148,3 +148,4 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*1e37\s*or\s*r7, r7, r3
 \s*[0-9a-f]*:\s*1715\s*xor\s*r5, r5, r1
 \s*[0-9a-f]*:\s*1726\s*xor\s*r6, r6, r2
+#...

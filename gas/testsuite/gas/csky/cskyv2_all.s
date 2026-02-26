@@ -184,8 +184,8 @@ all:
    push   r28
    push   r16
    ins    r3, r2, 4, 2
-   zext   r3, r2, 4, 2
-   sext   r3, r2, 4, 2
+   zext   r3, r2, 8, 4
+   sext   r3, r2, 8, 4
    andi   r3, r2, 2
    andni  r3, r2, 2
    xori   r3, r2, 12

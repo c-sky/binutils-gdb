@@ -184,6 +184,7 @@ cris-*-* | crisv32-*-*)	targ_emul=criself
 crx-*-elf*)		targ_emul=elf32crx
 			;;
 
+csky*-newlib*)		targ_emul=cskyelf ;;
 csky*-elf*)		targ_emul=cskyelf ;;
 csky*-ecos*)		targ_emul=cskyelf ;;
 csky*-uclinux*)	targ_emul=cskyelf_uclinux ;;

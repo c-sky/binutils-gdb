@@ -66,18 +66,22 @@ callgraph_hash_table func_hash_table;
 static struct csky_arch_for_merge csky_archs[] =
 {
   /* 510 and 610 merge to 610 without warning.  */
-  { "510",  CSKY_ARCH_510,  CSKY_V1,  0, 0},
-  { "610",  CSKY_ARCH_610,  CSKY_V1,  1, 0},
+  { "ck510",  CSKY_ARCH_510,  CSKY_V1,  0, 0},
+  { "ck610",  CSKY_ARCH_610,  CSKY_V1,  1, 0},
   /* 802p,803p,810p merge to largest one.  */
   /*{ "802p", M_CK802P, CSKY_V1P, 0, 1},
   { "803p", M_CK803P, CSKY_V1P, 1, 1},
   { "810p", M_CK810P, CSKY_V1P, 2, 1},*/
   /* 801,802,803,807,810 merge to largest one.  */
-  { "801",  CSKY_ARCH_801,  CSKY_V2,  0, 1},
-  { "802",  CSKY_ARCH_802,  CSKY_V2,  1, 1},
-  { "803",  CSKY_ARCH_803,  CSKY_V2,  2, 1},
-  { "807",  CSKY_ARCH_807,  CSKY_V2,  3, 1},
-  { "810",  CSKY_ARCH_810,  CSKY_V2,  4, 1},
+  { "ck801",  CSKY_ARCH_801,  CSKY_V2,  0, 1},
+  { "ck802",  CSKY_ARCH_802,  CSKY_V2,  1, 1},
+  { "ck803",  CSKY_ARCH_803,  CSKY_V2,  2, 1},
+  { "ck804",  CSKY_ARCH_804,  CSKY_V2,  3, 1},
+  { "ck805",  CSKY_ARCH_805,  CSKY_V2,  4, 1},
+  { "ck807",  CSKY_ARCH_807,  CSKY_V2,  5, 1},
+  { "ck810",  CSKY_ARCH_810,  CSKY_V2,  6, 1},
+  { "ck860",  CSKY_ARCH_810,  CSKY_V2,  7, 1},
+  { "ck800",  CSKY_ARCH_800,  CSKY_V2,  8, 1},
   { NULL, 0, 0, 0, 0}
 };
 
@@ -88,12 +92,12 @@ static reloc_howto_type csky_elf_howto_table[] =
   /* 0 */
   HOWTO (R_CKCORE_NONE,               /* type */
          0,                           /* rightshift */
-         0,                           /* size */
+         3,                           /* size */
          0,                           /* bitsize */
          FALSE,                       /* pc_relative */
          0,                           /* bitpos */
          complain_overflow_dont,      /* complain_on_overflow */
-         NULL,                        /* special_function */
+         bfd_elf_generic_reloc,       /* special_function */
          "R_CKCORE_NONE",             /* name */
          FALSE,                       /* partial_inplace */
          0,                           /* src_mask */
@@ -156,7 +160,7 @@ static reloc_howto_type csky_elf_howto_table[] =
          TRUE,                        /* pc_relative */
          0,                           /* bitpos */
          complain_overflow_dont,      /* complain_on_overflow */
-         bfd_elf_generic_reloc,       /* special_function */
+         NULL,                        /* special_function */
          "R_CKCORE_PCREL32",          /* name */
          FALSE,                       /* partial_inplace */
          0x0,                         /* src_mask */
@@ -224,13 +228,25 @@ static reloc_howto_type csky_elf_howto_table[] =
          FALSE),                      /* pcrel_offset */
 
   /* 10: None.  */
-  HOWTO (R_CKCORE_COPY,0,0,0,0,0,0,0,"R_CKCORE_",0,0,0,0),
+  HOWTO (R_CKCORE_COPY,		/* type */
+         0,                           /* rightshift */
+         2,                           /* size (0 = byte, 1 = short, 2 = long) */
+         32,                          /* bitsize */
+         FALSE,                       /* pc_relative */
+         0,                           /* bitpos */
+         complain_overflow_bitfield,  /* complain_on_overflow */
+         bfd_elf_generic_reloc,       /* special_function */
+         "R_CKCORE_COPY",		          /* name */
+         TRUE,			                  /* partial_inplace */
+         0xffffffff,		              /* src_mask */
+         0xffffffff,		              /* dst_mask */
+         FALSE),                      /* pcrel_offset */
 
   /* 11: None.  */
-  HOWTO (R_CKCORE_GLOB_DAT,0,0,0,0,0,0,0,"R_CKCORE_",0,0,0,0),
+  HOWTO (R_CKCORE_GLOB_DAT,0,0,0,0,0,0,0,"R_CKCORE_GLOB_DAT",0,0,0,0),
 
   /* 12: None.  */
-  HOWTO (R_CKCORE_JUMP_SLOT,0,0,0,0,0,0,0,"R_CKCORE_",0,0,0,0),
+  HOWTO (R_CKCORE_JUMP_SLOT,0,0,0,0,0,0,0,"R_CKCORE_JUMP_SLOT",0,0,0,0),
 
   /* 13.  */
   HOWTO (R_CKCORE_GOTOFF,             /* type */
@@ -321,7 +337,7 @@ static reloc_howto_type csky_elf_howto_table[] =
          TRUE,                        /* pc_relative */
          0,                           /* bitpos */
          complain_overflow_signed,    /* complain_on_overflow */
-         NULL,                        /* special_function */
+         bfd_elf_generic_reloc,       /* special_function */
          "R_CKCORE_PCREL_IMM16BY2",   /* name */
          FALSE,                       /* partial_inplace */
          0x0,                         /* src_mask */
@@ -336,7 +352,7 @@ static reloc_howto_type csky_elf_howto_table[] =
          TRUE,                        /* pc_relative */
          0,                           /* bitpos */
          complain_overflow_bitfield,  /* complain_on_overflow */
-         NULL,                        /* special_function */
+         bfd_elf_generic_reloc,       /* special_function */
          "R_CKCORE_PCREL_IMM16BY4",   /* name */
          FALSE,                       /* partial_inplace */
          0xffff0000,                  /* src_mask */
@@ -366,7 +382,7 @@ static reloc_howto_type csky_elf_howto_table[] =
          TRUE,                        /* pc_relative */
          0,                           /* bitpos */
          complain_overflow_bitfield,  /* complain_on_overflow */
-         NULL,                        /* special_function */
+         bfd_elf_generic_reloc,       /* special_function */
          "R_CKCORE_PCREL_IMM10BY4",   /* name */
          FALSE,                       /* partial_inplace */
          0x0,                         /* src_mask */
@@ -618,7 +634,7 @@ static reloc_howto_type csky_elf_howto_table[] =
          TRUE,                        /* pc_relative */
          0,                           /* bitpos */
          complain_overflow_signed,    /* complain_on_overflow */
-         NULL,                        /* special_function */
+         bfd_elf_generic_reloc,       /* special_function */
          "R_CKCORE_PCREL_IMM18BY2",   /* name */
          FALSE,                       /* partial_inplace */
          0x0,                         /* src_mask */
@@ -822,7 +838,7 @@ static reloc_howto_type csky_elf_howto_table[] =
          TRUE,                        /* pc_relative */
          0,                           /* bitpos */
          complain_overflow_bitfield,  /* complain_on_overflow */
-         NULL,                        /* special_function */
+         bfd_elf_generic_reloc,       /* special_function */
          "R_CKCORE_PCREL_FLRW_IMM8BY4",/* name */
          FALSE,                       /* partial_inplace */
          0xfe1fff0f,                  /* src_mask */
@@ -890,7 +906,62 @@ static reloc_howto_type csky_elf_howto_table[] =
          0x0,                         /* src_mask */
          0xfff,                       /* dst_mask */
          TRUE),                       /* pcrel_offset */
-
+  /* 65: for vlrw instruction */
+  HOWTO (R_CKCORE_PCREL_VLRW_IMM12BY1,/* type */
+         0,                           /* rightshift */
+         4,                           /* size */
+         12,                          /* bitsize */
+         1,                           /* pc_relative */
+         0,                           /* bitpos */
+         complain_overflow_signed,    /* complain_on_overflow */
+         bfd_elf_generic_reloc,       /* special_function */
+         "R_CKCORE_PCREL_VLRW_IMM12BY1",/* name */
+         FALSE,                       /* partial_inplace */
+         0xfff,                         /* src_mask */
+         0x3ff030,                    /* dst_mask */
+         TRUE),                       /* pcrel_offset */
+  /* 66: for vlrw instruction */
+  HOWTO (R_CKCORE_PCREL_VLRW_IMM12BY2,/* type */
+         1,                           /* rightshift */
+         4,                           /* size */
+         12,                          /* bitsize */
+         1,                           /* pc_relative */
+         0,                           /* bitpos */
+         complain_overflow_signed,    /* complain_on_overflow */
+         bfd_elf_generic_reloc,       /* special_function */
+         "R_CKCORE_PCREL_VLRW_IMM12BY2",/* name */
+         FALSE,                       /* partial_inplace */
+         0xfff,                         /* src_mask */
+         0x3ff030,                    /* dst_mask */
+         TRUE),                       /* pcrel_offset */
+  /* 67: for vlrw instruction */
+  HOWTO (R_CKCORE_PCREL_VLRW_IMM12BY4,/* type */
+         2,                           /* rightshift */
+         4,                           /* size */
+         12,                          /* bitsize */
+         1,                           /* pc_relative */
+         0,                           /* bitpos */
+         complain_overflow_signed,    /* complain_on_overflow */
+         bfd_elf_generic_reloc,       /* special_function */
+         "R_CKCORE_PCREL_VLRW_IMM12BY4",/* name */
+         FALSE,                       /* partial_inplace */
+         0xfff,                         /* src_mask */
+         0x3ff030,                    /* dst_mask */
+         TRUE),                       /* pcrel_offset */
+  /* 68: for vlrw instruction */
+  HOWTO (R_CKCORE_PCREL_VLRW_IMM12BY8,/* type */
+         3,                           /* rightshift */
+         4,                           /* size */
+         12,                          /* bitsize */
+         1,                           /* pc_relative */
+         0,                           /* bitpos */
+         complain_overflow_signed,    /* complain_on_overflow */
+         bfd_elf_generic_reloc,       /* special_function */
+         "R_CKCORE_PCREL_VLRW_IMM12BY8",/* name */
+         FALSE,                       /* partial_inplace */
+         0xfff,                         /* src_mask */
+         0x3ff030,                    /* dst_mask */
+         TRUE),                       /* pcrel_offset */
 
 };
 
@@ -1203,6 +1274,8 @@ struct csky_elf_link_hash_table
   asection *sgot;
   asection *srelgot;
   asection *splt;
+  asection *sdynbss;
+  asection *srelbss;
 
   /* Small local sym cache.  */
   struct sym_cache sym_cache;
@@ -1474,9 +1547,17 @@ static bfd_boolean
 csky_elf_create_dynamic_sections (bfd *dynobj,
                                   struct bfd_link_info *info)
 {
+  struct csky_elf_link_hash_table *htab;
+  htab = csky_elf_hash_table (info);
+  if (htab == NULL)
+    return FALSE;
+
   if (!_bfd_elf_create_dynamic_sections (dynobj, info))
     return FALSE;
 
+  htab->sdynbss = bfd_get_linker_section (dynobj, ".dynbss");
+  if (!bfd_link_pic (info))
+    htab->srelbss = bfd_get_linker_section (dynobj, ".rela.bss");
   return TRUE;
 }
 
@@ -1491,9 +1572,20 @@ csky_elf_adjust_dynamic_symbol (struct bfd_link_info *info,
                                 struct elf_link_hash_entry *h)
 {
   struct csky_elf_link_hash_entry *eh;
+  struct csky_elf_link_hash_table *htab;
+  asection *srel;
+  asection *s;
+  bfd * dynobj;
+
   eh = (struct csky_elf_link_hash_entry *)h;
   if (eh == NULL)
     return FALSE;
+
+  htab = csky_elf_hash_table (info);
+  if (htab == NULL)
+    return FALSE;
+
+  dynobj = elf_hash_table (info)->dynobj;
 
   /*Clear jsri2bsr_refcount, if creating shared library files. */
   if (bfd_link_pic (info))
@@ -1553,6 +1645,10 @@ csky_elf_adjust_dynamic_symbol (struct bfd_link_info *info,
       h->root.u.def.value = h->u.weakdef->root.u.def.value;
       return TRUE;
     }
+  /* If there are no non-GOT references, we do not need a copy
+     relocation.  */
+  if (!h->non_got_ref)
+    return TRUE;
 
   /* This is a reference to a symbol defined by a dynamic object which
      is not a function.  */
@@ -1561,10 +1657,38 @@ csky_elf_adjust_dynamic_symbol (struct bfd_link_info *info,
      only references to the symbol are via the global offset table.
      For such cases we need not do anything here; the relocations will
      be handled correctly by relocate_section.  */
-  if (bfd_link_pic (info))
+  if (bfd_link_pic (info) || htab->elf.is_relocatable_executable)
    {
       return TRUE;
    }
+
+  /* We must allocate the symbol in our .dynbss section, which will
+     become part of the .bss section of the executable.  There will be
+     an entry for this symbol in the .dynsym section.  The dynamic
+     object will contain position independent code, so all references
+     from the dynamic object to this symbol will go through the global
+     offset table.  The dynamic linker will use the .dynsym entry to
+     determine the address it must put in the global offset table, so
+     both the dynamic object and the regular object will refer to the
+     same memory location for the variable.  */
+
+  s = bfd_get_linker_section (dynobj, ".dynbss");
+  BFD_ASSERT (s != NULL);
+
+  /* If allowed, we must generate a R_CKCORE_COPY reloc to tell the dynamic
+     linker to copy the initial value out of the dynamic object and into
+     the runtime process image.  We need to remember the offset into the
+     .rel(a).bss section we are going to use.  */
+  if (info->nocopyreloc == 0
+      && (h->root.u.def.section->flags & SEC_ALLOC) != 0
+      && h->size != 0
+      && s != NULL)
+    {
+      srel = bfd_get_linker_section (dynobj, ".rela.bss");
+      srel->size += sizeof (Elf32_External_Rela);
+      h->needs_copy = 1;
+      return _bfd_elf_adjust_dynamic_copy (info, h, s);
+    }
 
   h->non_got_ref = 0;
   return TRUE;
@@ -1995,7 +2119,9 @@ csky_elf_size_dynamic_sections (bfd *output_bfd ATTRIBUTE_UNUSED,
 
       if (s == htab->elf.splt
           || s == htab->elf.sgot
-          || s == htab->elf.sgotplt)
+          || s == htab->elf.sgotplt
+	        || s == htab->elf.iplt
+	        || s == htab->elf.igotplt)
         {
           /* Strip this section if we don't need it;
              see the comment below.  */
@@ -2254,6 +2380,28 @@ csky_elf_finish_dynamic_symbol (bfd *output_bfd,
         bfd_elf32_swap_reloca_out (output_bfd, &rel, loc);
     }
 
+  if (h->needs_copy)
+    {
+      Elf_Internal_Rela rela;
+      bfd_byte *loc;
+      asection *s;
+      s = htab->srelbss;
+
+      /* This symbol needs a copy reloc. Set it up.  */
+      BFD_ASSERT (h->dynindx != -1
+                  && (h->root.type == bfd_link_hash_defined
+                      || h->root.type == bfd_link_hash_defweak));
+
+      rela.r_offset = (h->root.u.def.value
+		       + h->root.u.def.section->output_section->vma
+		       + h->root.u.def.section->output_offset);
+      rela.r_info = ELF32_R_INFO (h->dynindx, R_CKCORE_COPY);
+      rela.r_addend = 0;
+
+      loc = s->contents;
+      loc += s->reloc_count++ * sizeof (Elf32_External_Rela);
+      bfd_elf32_swap_reloca_out (output_bfd, &rela, loc);
+    }
 
   /* Mark _DYNAMIC and _GLOBAL_OFFSET_TABLE_ as absolute.  */
   if (strcmp (h->root.root.string, "_DYNAMIC") == 0
@@ -2551,6 +2699,23 @@ csky_elf_check_relocs (bfd * abfd,
           case R_CKCORE_ADDR32:
           case R_CKCORE_ADDR_HI16:
           case R_CKCORE_ADDR_LO16:
+            if (r_type == R_CKCORE_ADDR32
+                && h != NULL
+                && bfd_link_executable (info)
+                && h->type == STT_OBJECT
+                && (sec->flags & SEC_ALLOC) != 0
+                && (sec->flags & SEC_READONLY)
+                )
+              {
+	              /* If this reloc is in a read-only section, we might
+                   need a copy reloc.  We can't check reliably at this
+                   stage whether the section is read-only, as input
+                   sections have not yet been mapped to output sections.
+                   Tentatively set the flag for now, and correct in
+                   adjust_dynamic_symbol.  */
+	              h->non_got_ref = 1;
+              }
+
             /* If we are creating a shared library or relocatable executable,
                and this is a reloc against a global symbol, then we need to
                copy the reloc into the shared library. However, if we are
@@ -2690,6 +2855,24 @@ csky_elf_check_relocs (bfd * abfd,
           case R_CKCORE_TLS_GD32:
             {
               int tls_type, old_tls_type;
+
+              if (r_type == R_CKCORE_GOT_IMM18BY4
+                  && h != NULL
+                  && bfd_link_executable (info)
+                  && h->type == STT_OBJECT
+                  && (sec->flags & SEC_ALLOC) != 0
+                  && (sec->flags & SEC_READONLY)
+                  )
+                {
+	                /* If this reloc is in a read-only section, we might
+                     need a copy reloc.  We can't check reliably at this
+                     stage whether the section is read-only, as input
+                     sections have not yet been mapped to output sections.
+                     Tentatively set the flag for now, and correct in
+                     adjust_dynamic_symbol.  */
+	                h->non_got_ref = 1;
+                }
+
               switch( ELF32_R_TYPE (rel->r_info))
                 {
                   case R_CKCORE_TLS_IE32: tls_type = GOT_TLS_IE;break;
@@ -2827,8 +3010,249 @@ _csky_find_arch_with_eflag (const unsigned long arch_eflag)
       (*_bfd_error_handler) (msg, arch_eflag);
       bfd_set_error (bfd_error_wrong_format);
     }
+
+  if (csky_arch->arch_eflag == 0)
+    return NULL;
+
   return csky_arch;
 }
+
+static csky_arch_for_merge *
+_csky_find_arch_with_name (const char *name)
+{
+  csky_arch_for_merge *csky_arch = NULL;
+  const char *msg;
+
+  if (name == NULL)
+    return NULL;
+
+  for (csky_arch = csky_archs; csky_arch->name != NULL; csky_arch++)
+    {
+      if (strncmp (csky_arch->name, name, strlen (csky_arch->name)) == 0)
+        break;
+    }
+  if (csky_arch == NULL)
+    {
+      msg = _("warning: unrecognised arch name '%#x'");
+      (*_bfd_error_handler) (msg, name);
+      bfd_set_error (bfd_error_wrong_format);
+    }
+  return csky_arch;
+}
+
+static bfd_boolean
+elf32_csky_merge_attributes (bfd *ibfd, bfd *obfd)
+{
+  obj_attribute *in_attr;
+  obj_attribute *out_attr;
+  obj_attribute tattr;
+  csky_arch_for_merge *old_arch = NULL;
+  csky_arch_for_merge *new_arch = NULL;
+  int i;
+  bfd_boolean result = TRUE;
+  const char *msg = NULL;
+
+  const char *sec_name = get_elf_backend_data (ibfd)->obj_attrs_section;
+
+  /* Skip the linker stubs file.  This preserves previous behavior
+     of accepting unknown attributes in the first input file - but
+     is that a bug?  */
+  if (ibfd->flags & BFD_LINKER_CREATED)
+    return TRUE;
+
+  /* Skip any input that hasn't attribute section.
+     This enables to link object files without attribute section with
+     any others.  */
+  if (sec_name == NULL || bfd_get_section_by_name (ibfd, sec_name) == NULL)
+    {
+      return TRUE;
+    }
+
+  if (!elf_known_obj_attributes_proc (obfd)[0].i)
+    {
+      /* This is the first object.  Copy the attributes.  */
+      out_attr = elf_known_obj_attributes_proc (obfd);
+
+      /* If Tag_CSKY_CPU_NAME is already set, save it.  */
+      memcpy (&tattr, &out_attr[Tag_CSKY_ARCH_NAME], sizeof (tattr));
+
+      _bfd_elf_copy_obj_attributes (ibfd, obfd);
+
+      out_attr = elf_known_obj_attributes_proc (obfd);
+
+      /* Restore Tag_CSKY_CPU_NAME.  */
+      memcpy (&out_attr[Tag_CSKY_ARCH_NAME], &tattr, sizeof (tattr));
+
+      /* Use the Tag_null value to indicate the attributes have been
+         initialized.  */
+      out_attr[0].i = 1;
+    }
+
+  in_attr = elf_known_obj_attributes_proc (ibfd);
+  out_attr = elf_known_obj_attributes_proc (obfd);
+
+  /* Check Floating 3.0 & (VDSP2.0 and Floating 3.0).  */
+  if ( out_attr[Tag_CSKY_FPU_VERSION].i == VAL_CSKY_FPU_VERSION_3
+       && in_attr[Tag_CSKY_FPU_VERSION].i == VAL_CSKY_FPU_VERSION_3)
+    {
+      if (out_attr[Tag_CSKY_VDSP_VERSION].i != 0
+          && in_attr[Tag_CSKY_VDSP_VERSION].i != 0
+          && (out_attr[Tag_CSKY_VDSP_VERSION].i
+              != in_attr[Tag_CSKY_VDSP_VERSION].i))
+        {
+          msg = _("Error: file %B's VFPU feature is conflict "
+                  "with file %B.");
+
+          (*_bfd_error_handler) (msg, ibfd, obfd);
+          bfd_set_error (bfd_error_wrong_format);
+          return FALSE;
+        }
+    }
+
+  for (i = LEAST_KNOWN_OBJ_ATTRIBUTE; i < NUM_KNOWN_OBJ_ATTRIBUTES; i++)
+    {
+      /* Merge this attribute with existing attributes.  */
+      switch (i)
+        {
+        case Tag_CSKY_CPU_NAME:
+          break;
+        case Tag_CSKY_ARCH_NAME:
+          /* Do arch merge.  */
+          new_arch = _csky_find_arch_with_name (in_attr[Tag_CSKY_ARCH_NAME].s);
+          old_arch = _csky_find_arch_with_name (out_attr[Tag_CSKY_ARCH_NAME].s);
+
+          if (new_arch != NULL && old_arch != NULL)
+            {
+              if (new_arch->class != old_arch->class) {
+                msg = _("%B: machine flag conflict with target");
+
+                  (*_bfd_error_handler) (msg, ibfd);
+                  bfd_set_error (bfd_error_wrong_format);
+                  return FALSE;
+                }
+              else if (new_arch->class_level != old_arch->class_level)
+                {
+                  obj_attribute *attr =
+                  ((new_arch->class_level > old_arch->class_level) ?
+                  in_attr : out_attr) ;
+
+                  if (new_arch->do_warning || old_arch->do_warning)
+                    {
+                      msg = _("warning: file %B's arch flag %s conflict "
+                              "with target %s,set target arch flag to %s ");
+
+                       (*_bfd_error_handler) (msg, ibfd,  in_attr[i].s,
+                                              out_attr[i].s,
+                                              (attr[i].s));
+                       bfd_set_error (bfd_error_wrong_format);
+                    }
+
+                  if (attr != out_attr)
+                    {
+                      if (out_attr[Tag_CSKY_ARCH_NAME].s != NULL)
+                        {
+                          out_attr[Tag_CSKY_ARCH_NAME].s =
+                           _bfd_elf_attr_strdup (obfd,
+                                                 attr[Tag_CSKY_ARCH_NAME].s);
+                        }
+                      if (out_attr[Tag_CSKY_CPU_NAME].s != NULL)
+                        {
+                          out_attr[Tag_CSKY_CPU_NAME].s =
+                           _bfd_elf_attr_strdup (obfd,
+                                                 attr[Tag_CSKY_CPU_NAME].s);
+                        }
+                    }
+                }
+            }
+          else if (old_arch == NULL
+                   && in_attr[Tag_CSKY_ARCH_NAME].s
+                   && in_attr[Tag_CSKY_CPU_NAME].s)
+            {
+              out_attr[Tag_CSKY_ARCH_NAME].s =
+               _bfd_elf_attr_strdup (obfd, in_attr[Tag_CSKY_ARCH_NAME].s);
+
+              out_attr[Tag_CSKY_CPU_NAME].s =
+               _bfd_elf_attr_strdup (obfd, in_attr[Tag_CSKY_CPU_NAME].s);
+            }
+
+          break;
+
+        case Tag_CSKY_ISA_FLAGS:
+        case Tag_CSKY_ISA_EXT_FLAGS:
+          out_attr[i].i |= in_attr[i].i;
+          break;
+
+        case Tag_CSKY_VDSP_VERSION:
+          if (out_attr[i].i == 0)
+            out_attr[i].i = in_attr[i].i;
+          else if (out_attr[i].i != in_attr[i].i
+                   && in_attr[i].i != 0)
+            {
+              _bfd_error_handler
+               (_("Error: %B and %B has different VDSP version"), ibfd, obfd);
+              result = FALSE;
+            }
+          break;
+
+        case Tag_CSKY_FPU_VERSION:
+          if (out_attr[i].i <= in_attr[i].i
+              && out_attr[i].i == 0)
+            out_attr[i].i = in_attr[i].i;
+          break;
+
+        case Tag_CSKY_FPU_ABI:
+          if (out_attr[i].i == 0
+              || (out_attr[i].i == VAL_CSKY_FPU_ABI_SOFT
+                  &&  in_attr[i].i == VAL_CSKY_FPU_ABI_SOFTFP))
+            {
+              /* out float-abi is none 
+                 out float-abi is SOFT and in is SOFTFP. */
+              out_attr[i].i = in_attr[i].i;
+            }
+          else if (in_attr[i].i != 0
+                   && out_attr[i].i != in_attr[i].i
+                   && (out_attr[i].i == VAL_CSKY_FPU_ABI_HARD
+                       || in_attr[i].i == VAL_CSKY_FPU_ABI_HARD))
+            {
+              _bfd_error_handler
+               (_("Error: %B and %B has different FPU ABI"), ibfd, obfd);
+               result = FALSE;
+            }
+          break;
+
+        case Tag_CSKY_DSP_VERSION:
+          if (out_attr[i].i == 0)
+            out_attr[i].i = in_attr[i].i;
+          else if (out_attr[i].i != in_attr[i].i
+                   && in_attr[i].i != 0)
+            {
+              _bfd_error_handler
+               (_("Error: %B and %B has different DSP version"), ibfd, obfd);
+              result = FALSE;
+            }
+          break;
+
+        default:
+          result
+           = result && _bfd_elf_merge_unknown_attribute_low (ibfd, obfd, i);
+          break;
+        }
+
+      /* If out_attr was copied from in_attr then it won't have a type yet.  */
+      if (in_attr[i].type && !out_attr[i].type)
+        out_attr[i].type = in_attr[i].type;
+    }
+
+  /* Merge Tag_compatibility attributes and any common GNU ones.  */
+  if (!_bfd_elf_merge_object_attributes (ibfd, obfd))
+    return FALSE;
+
+  /* Check for any attributes not known on CSKY.  */
+  result &= _bfd_elf_merge_unknown_attribute_list (ibfd, obfd);
+
+  return result;
+}
+
 
 /* Merge backend specific data from an object file to the output
    object file when linking.  */
@@ -2840,7 +3264,10 @@ csky_elf_merge_private_bfd_data (bfd * ibfd, bfd * obfd)
   flagword new_flags;
   csky_arch_for_merge *old_arch = NULL;
   csky_arch_for_merge *new_arch = NULL;
+  flagword newest_flag = 0;
   const char *msg;
+  const char *sec_name;
+  obj_attribute *out_attr;
 
   /* Check if we have the same endianess.  */
   if (! _bfd_generic_verify_endian_match (ibfd, obfd))
@@ -2850,56 +3277,52 @@ csky_elf_merge_private_bfd_data (bfd * ibfd, bfd * obfd)
       || bfd_get_flavour (obfd) != bfd_target_elf_flavour)
     return TRUE;
 
-  new_flags = elf_elfheader (ibfd)->e_flags;
-  old_flags = elf_elfheader (obfd)->e_flags;
+  /* Merge ".csky.attribute" section.  */
+  if (!elf32_csky_merge_attributes (ibfd, obfd))
+    return FALSE;
 
   if (! elf_flags_init (obfd))
     {
       /* First call, no flags set.  */
       elf_flags_init (obfd) = TRUE;
-      elf_elfheader (obfd)->e_flags = new_flags;
     }
-  else if (new_flags == old_flags)
-    {
-      /* do nothing.  */
-    }
-  else if (new_flags == 0 || old_flags == 0)
-    {
-      /* when one flag is 0,assign the other one's flag.  */
-      elf_elfheader (obfd)->e_flags = new_flags | old_flags;
-    }
-  else
-    {
-      flagword newest_flag = 0;
 
-      if (((new_flags & CSKY_ARCH_MASK) != 0)
-              && ((old_flags & CSKY_ARCH_MASK) != 0))
+  /* Try to merge e_flag.  */
+  new_flags = elf_elfheader (ibfd)->e_flags;
+  old_flags = elf_elfheader (obfd)->e_flags;
+  out_attr = elf_known_obj_attributes_proc (obfd);
+
+  /* the flags like"e , f ,g ..." , we take collection.  */
+  newest_flag = (old_flags & (~CSKY_ARCH_MASK))
+   | (new_flags & (~CSKY_ARCH_MASK));
+
+  sec_name = get_elf_backend_data (ibfd)->obj_attrs_section;
+  if (sec_name == NULL || bfd_get_section_by_name (ibfd, sec_name) == NULL)
+    {
+      /* Input BFDs have no ".csky.attribute" section.  */
+      new_arch = _csky_find_arch_with_eflag (new_flags & CSKY_ARCH_MASK);
+      old_arch = _csky_find_arch_with_name (out_attr[Tag_CSKY_ARCH_NAME].s);
+
+      if (new_arch != NULL && old_arch != NULL)
         {
-          new_arch = _csky_find_arch_with_eflag (new_flags & CSKY_ARCH_MASK);
-          old_arch = _csky_find_arch_with_eflag (old_flags & CSKY_ARCH_MASK);
-          /* the flags like"e , f ,g ..." , we take collection.  */
-          newest_flag = (old_flags & (~CSKY_ARCH_MASK))
-                         | (new_flags & (~CSKY_ARCH_MASK));
-          if (new_arch != NULL && old_arch != NULL)
+          if (new_arch->class != old_arch->class)
             {
-              if (new_arch->class != old_arch->class)
-                {
-                  msg = _("%B: machine flag conflict with target");
+              msg = _("%B: machine flag conflict with target");
 
-                  (*_bfd_error_handler) (msg, ibfd);
-                  bfd_set_error (bfd_error_wrong_format);
-                  return FALSE;
-                }
-              else if (new_arch->class_level != old_arch->class_level)
-                {
+              (*_bfd_error_handler) (msg, ibfd);
+              bfd_set_error (bfd_error_wrong_format);
+              return FALSE;
+            }
+          else if (new_arch->class_level != old_arch->class_level)
+            {
                   csky_arch_for_merge *newest_arch =
                   ((new_arch->class_level > old_arch->class_level) ?
                   new_arch : old_arch) ;
 
                   if (new_arch->do_warning || old_arch->do_warning)
                     {
-                      msg = _("warning: file %B's arch flag ck%s conflict \
-                              with target ck%s,set target arch flag to ck%s ");
+                      msg = _("warning: file %B's arch flag %s conflict "
+                              "with target %s,set target arch flag to %s ");
 
                        (*_bfd_error_handler) (msg, ibfd,  new_arch->name,
                                               old_arch->name,
@@ -2907,7 +3330,8 @@ csky_elf_merge_private_bfd_data (bfd * ibfd, bfd * obfd)
                        bfd_set_error (bfd_error_wrong_format);
                     }
 
-                  newest_flag |= newest_arch->arch_eflag;
+                  out_attr[Tag_CSKY_ARCH_NAME].s =
+                   _bfd_elf_attr_strdup (obfd, newest_arch->name);
                 }
               else
                 {
@@ -2917,18 +3341,14 @@ csky_elf_merge_private_bfd_data (bfd * ibfd, bfd * obfd)
             }
           else
             {
-              newest_flag |= ((new_flags & (CSKY_ARCH_MASK | CSKY_ABI_MASK))
-                              | (old_flags & (CSKY_ARCH_MASK | CSKY_ABI_MASK)));
+              if (new_arch && new_arch->name != NULL)
+                out_attr[Tag_CSKY_ARCH_NAME].s =
+                 _bfd_elf_attr_strdup (obfd, new_arch->name);
             }
-        }
-      else
-        {
-          newest_flag |= ((new_flags & (CSKY_ARCH_MASK | CSKY_ABI_MASK))
-                           | (old_flags & (CSKY_ARCH_MASK | CSKY_ABI_MASK)));
-        }
-
-      elf_elfheader (obfd)->e_flags = newest_flag;
     }
+
+  elf_elfheader (obfd)->e_flags = newest_flag;
+
   return TRUE;
 }
 
@@ -4067,6 +4487,11 @@ _csky_relocate_contents (reloc_howto_type *howto,
         }
 
     }
+  /* 66574249, current maybe not aligned with rightshift.
+   * make sure (pc + `relocation`) & mask aligned with rightshift .  */
+  if (rightshift > 0)
+    relocation += (1 << (rightshift - 1));
+
   /* Put RELOCATION in the right bits.  */
   relocation >>= (bfd_vma) rightshift;
 
@@ -4449,6 +4874,9 @@ csky_elf_relocate_section(bfd *                  output_bfd,
           relocation = _bfd_elf_rela_local_sym (output_bfd, sym, &sec, rel);
           addend = (bfd_vma)rel->r_addend;
         }
+      /* We don't need to handler R_CKCORE_NONE here. It's just a marker.  */
+      else if (howto->type == R_CKCORE_NONE)
+        continue;
       else
         {
           bfd_boolean warned, ignored;
@@ -4512,12 +4940,12 @@ csky_elf_relocate_section(bfd *                  output_bfd,
             if (h == NULL && (addend & 0x80000000))
               addend &= 0xffffffff;
             break;
-	  case R_CKCORE_PCREL32:
-	    if ((long)addend < 0) {
-		relocation += (long)addend;
-		addend = 0;
-	    }
-	    break;
+          case R_CKCORE_PCREL32:
+            if ((long)addend < 0) {
+                relocation += (long)addend;
+                addend = 0;
+            }
+            break;
           case R_CKCORE_GOT12:
           case R_CKCORE_PLT12:
           case R_CKCORE_GOT_HI16:
@@ -4755,7 +5183,7 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                    Otherwise it is local symbol, find the function with
                    address.  */
                 /* TODO: deal with callgraph */
-                callgraph_hash_entry *ret = NULL;
+                callgraph_hash_entry *cal= NULL;
                 BFD_ASSERT (input_section->output_section != NULL);
                 long address = input_section->output_offset + rel->r_offset
                                + input_section->output_section->vma;
@@ -4771,7 +5199,7 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                     if (h != NULL)
                       {
                         /* Global.  */
-                        ret = callgraph_hash_lookup (&func_hash_table,
+                        cal = callgraph_hash_lookup (&func_hash_table,
                                                      h->root.root.string,
                                                      0, 0);
                       }
@@ -4786,23 +5214,23 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                                                          call_func, func_addr,
                                                          1);
                         if (call_func != NULL)
-                          ret = call_func->hash_entry;
+                          cal = call_func->hash_entry;
                       }
-                    if (ret != NULL)
+                    if (cal != NULL)
                       if (current_func != NULL)
                         {
                           if (current_func != NULL)
                             {
                               func_vec_insert (&current_func->hash_entry->calls,
-                                               ret);
-                              func_vec_insert (&ret->call_bys,
+                                               cal);
+                              func_vec_insert (&cal->call_bys,
                                                current_func->hash_entry);
                             }
                           else
                             {
                               add_ref elem;
                               elem.section = input_section;
-                              add_ref_list_insert (&ret->add_refs, elem);
+                              add_ref_list_insert (&cal->add_refs, elem);
                             }
                         }
                   }
@@ -4825,6 +5253,13 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                     break;
                   }
 
+                /* Ignore weak references to undefined symbols.  */
+                if (h != NULL && h->root.type == bfd_link_hash_undefweak)
+                  {
+                    do_final_relocate = FALSE;
+                    break;
+                  }
+
                 /* Using branch stub.  */
                 if (use_branch_stub == TRUE
                     && ELF32_R_TYPE (rel->r_info) == R_CKCORE_PCREL_IMM26BY2)
@@ -4839,9 +5274,10 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                     else if (disp > BSR_MAX_FWD_BRANCH_OFFSET
                              || disp < BSR_MAX_BWD_BRANCH_OFFSET)
                       {
-                        stub_entry = elf32_csky_get_stub_entry (input_section,
-                                                                input_section,
-                                                                h, rel, htab);
+                        if (sec)
+                          stub_entry = elf32_csky_get_stub_entry (input_section,
+                                                                  sec,
+                                                                  h, rel, htab);
                       }
                     if (stub_entry != NULL)
                       {
@@ -4996,6 +5432,11 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                 break;
               }
 
+            if (r_symndx >= symtab_hdr->sh_info
+                && h->non_got_ref
+                && bfd_link_pde(info))
+              break;
+
             if (r_symndx == 0
                 || (input_section->flags & SEC_ALLOC) == 0)
               {
@@ -5047,8 +5488,7 @@ csky_elf_relocate_section(bfd *                  output_bfd,
                  else if (h != NULL
                           && h->dynindx != -1
                           && (!bfd_link_pic(info)
-                              || ((!SYMBOLIC_BIND (info, h))
-                                  && (h->root.type == bfd_link_hash_defweak))
+                              || (!SYMBOLIC_BIND (info, h))
                               || !h->def_regular))
                    {
                      outrel.r_info = ELF32_R_INFO (h->dynindx, r_type);
@@ -5362,7 +5802,7 @@ csky_elf_relocate_section(bfd *                  output_bfd,
 
       if (howto->size == 2
           && (howto->type == R_CKCORE_ADDR32
-	      || howto->type == R_CKCORE_PCREL32
+              || howto->type == R_CKCORE_PCREL32
               || howto->type == R_CKCORE_GOT32
               || howto->type == R_CKCORE_GOTOFF
               || howto->type == R_CKCORE_GOTPC
@@ -5384,6 +5824,7 @@ csky_elf_relocate_section(bfd *                  output_bfd,
       if ((howto->type != R_CKCORE_PCREL_JSR_IMM11BY2)
           && (howto->type != R_CKCORE_PCREL_JSR_IMM26BY2)
           && (howto->type != R_CKCORE_CALLGRAPH)
+          && (howto->type != R_CKCORE_NONE)
           && do_final_relocate)
         {
           r = _csky_final_link_relocate (howto, input_bfd, input_section,
@@ -5503,18 +5944,35 @@ csky_elf_grok_psinfo (bfd *abfd, Elf_Internal_Note *note)
 static int
 elf32_csky_obj_attrs_arg_type (int tag)
 {
-  if (tag == Tag_compatibility)
-    return ATTR_TYPE_FLAG_INT_VAL | ATTR_TYPE_FLAG_STR_VAL;
-  else if (tag == Tag_CSKY_ARCH_NAME || tag == Tag_CSKY_CPU_NAME)
-    return ATTR_TYPE_FLAG_STR_VAL;
+  switch (tag)
+    {
+    case Tag_compatibility:
+      return ATTR_TYPE_FLAG_INT_VAL | ATTR_TYPE_FLAG_STR_VAL;
+    case Tag_CSKY_ARCH_NAME:
+    case Tag_CSKY_CPU_NAME:
+    case Tag_CSKY_FPU_NUMBER_MODULE:
+      return ATTR_TYPE_FLAG_STR_VAL;
+    case Tag_CSKY_ISA_FLAGS:
+    case Tag_CSKY_ISA_EXT_FLAGS:
+    case Tag_CSKY_DSP_VERSION:
+    case Tag_CSKY_VDSP_VERSION:
+    case Tag_CSKY_FPU_VERSION:
+    case Tag_CSKY_FPU_ABI:
+    case Tag_CSKY_FPU_ROUNDING:
+    case Tag_CSKY_FPU_HARDFP:
+    case Tag_CSKY_FPU_Exception:
+    case Tag_CSKY_FPU_DENORMAL:
+      return ATTR_TYPE_FLAG_INT_VAL;
+    default:
+      break;
+    }
 
-  else
-    return (tag & 1) != 0 ? ATTR_TYPE_FLAG_STR_VAL : ATTR_TYPE_FLAG_INT_VAL;
+  return (tag & 1) != 0 ? ATTR_TYPE_FLAG_STR_VAL : ATTR_TYPE_FLAG_INT_VAL;
 }
 
 /* Attribute numbers >=64 (mod 128) can be safely ignored.  */
 static bfd_boolean
-elf32_csky_obj_attrs_handle_unknown (bfd *abfd, int tag)
+elf32_csky_obj_attrs_handle_unknown (bfd *abfd ATTRIBUTE_UNUSED, int tag ATTRIBUTE_UNUSED)
 {
   return TRUE;
 }

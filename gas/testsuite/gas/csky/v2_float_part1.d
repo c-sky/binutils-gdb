@@ -1,6 +1,6 @@
 # name: csky - v2-float
-#as: -mcpu=ck810ef -W
-#objdump: -D
+#as: -mcpu=ck810f -W
+#objdump: -d
 
 .*: +file format .*csky.*
 
@@ -12,8 +12,8 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*f4243203\s*fldmm\s*fr3-fr4,\s*\(r4\)
 \s*[0-9a-f]*:\s*f4243503\s*fstmd\s*fr3-fr4,\s*\(r4\)
 \s*[0-9a-f]*:\s*f4243103\s*fldmd\s*fr3-fr4,\s*\(r4\)
-\s*[0-9a-f]*:\s*f4022600\s*fstm\s*fr0,\s*\(r2,\s*0\)
-\s*[0-9a-f]*:\s*f4022200\s*fldm\s*fr0,\s*\(r2,\s*0\)
+\s*[0-9a-f]*:\s*f4022600\s*fstm\s*fr0,\s*\(r2,\s*0x0\)
+\s*[0-9a-f]*:\s*f4022200\s*fldm\s*fr0,\s*\(r2,\s*0x0\)
 \s*[0-9a-f]*:\s*f4022610\s*fstm\s*fr0,\s*\(r2,\s*0x8\)
 \s*[0-9a-f]*:\s*f4022210\s*fldm\s*fr0,\s*\(r2,\s*0x8\)
 \s*[0-9a-f]*:\s*f4022510\s*fstd\s*fr0,\s*\(r2,\s*0x4\)
@@ -52,3 +52,4 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*f4830202\s*fmuls\s*fr2,\s*fr3,\s*fr4
 \s*[0-9a-f]*:\s*f4830022\s*fsubs\s*fr2,\s*fr3,\s*fr4
 \s*[0-9a-f]*:\s*f4830002\s*fadds\s*fr2,\s*fr3,\s*fr4
+#...

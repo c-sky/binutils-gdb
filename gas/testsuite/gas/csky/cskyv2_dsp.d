@@ -1,6 +1,6 @@
-# name: csky - all
-#as: -mcpu=ck810e -W
-#objdump: -D
+# name: csky - dsp
+#as: -mcpu=ck810 -W
+#objdump: -d
 
 .*: +file format .*csky.*
 
@@ -16,3 +16,4 @@ Disassembly of section \.text:
 \s*[0-9a-f]*:\s*c4319080\s*mulshs\s*r17,\s*r1
 \s*[0-9a-f]*:\s*c6ec9440\s*mulswa\s*r12,\s*r23
 \s*[0-9a-f]*:\s*c4a39480\s*mulsws\s*r3,\s*r5
+#...

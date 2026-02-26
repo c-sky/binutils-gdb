@@ -19,65 +19,90 @@
    MA 02110-1301, USA.  */
 
 /* The following bitmasks control instruction set architecture.  */
-#define CSKYV1_ISA_E1       (1 << 0)
-#define CSKYV2_ISA_E1       (1 << 1)
-#define CSKYV2_ISA_1E2      (1 << 2)
-#define CSKYV2_ISA_2E3      (1 << 3)
-#define CSKYV2_ISA_3E7      (1 << 4)
-#define CSKYV2_ISA_7E10     (1 << 5)
-#define CSKYV2_ISA_3E3R1    (1 << 6)
-#define CSKYV2_ISA_3E3R2    (1 << 7)
-#define CSKYV2_ISA_10E60    (1 << 8)
+#define CSKYV1_ISA_E1       (((bfd_uint64_t)1) << 0)
+#define CSKYV2_ISA_E1       (((bfd_uint64_t)1) << 1)
+#define CSKYV2_ISA_1E2      (((bfd_uint64_t)1) << 2)
+#define CSKYV2_ISA_2E3      (((bfd_uint64_t)1) << 3)
+#define CSKYV2_ISA_3E7      (((bfd_uint64_t)1) << 4)
+#define CSKYV2_ISA_7E10     (((bfd_uint64_t)1) << 5)
+#define CSKYV2_ISA_3E3R1    (((bfd_uint64_t)1) << 6)
+#define CSKYV2_ISA_3E3R2    (((bfd_uint64_t)1) << 7)
+#define CSKYV2_ISA_10E60    (((bfd_uint64_t)1) << 8)
+#define CSKYV2_ISA_3E3R3    (((bfd_uint64_t)1) << 9)
 
-#define CSKY_ISA_TRUST      (1 << 11)
-#define CSKY_ISA_CACHE      (1 << 12)
-#define CSKY_ISA_NVIC       (1 << 13)
-#define CSKY_ISA_CP         (1 << 14)
-#define CSKY_ISA_MP         (1 << 15)
-#define CSKY_ISA_MP_1E2     (1 << 16)
-#define CSKY_ISA_JAVA       (1 << 17)
-#define CSKY_ISA_MAC        (1 << 18)
-#define CSKY_ISA_MAC_DSP    (1 << 19)
+#define CSKY_ISA_TRUST      (((bfd_uint64_t)1) << 11)
+#define CSKY_ISA_CACHE      (((bfd_uint64_t)1) << 12)
+#define CSKY_ISA_NVIC       (((bfd_uint64_t)1) << 13)
+#define CSKY_ISA_CP         (((bfd_uint64_t)1) << 14)
+#define CSKY_ISA_MP         (((bfd_uint64_t)1) << 15)
+#define CSKY_ISA_MP_1E2     (((bfd_uint64_t)1) << 16)
+#define CSKY_ISA_JAVA       (((bfd_uint64_t)1) << 17)
+#define CSKY_ISA_MAC        (((bfd_uint64_t)1) << 18)
+#define CSKY_ISA_MAC_DSP    (((bfd_uint64_t)1) << 19)
 /* Bacial dsp ISA for csky v1 and v2.  */
-#define CSKY_ISA_DSP        (1 << 20)
-#define CSKY_ISA_DSP_1E2    (1 << 21)
-#define CSKY_ISA_DSP_ENHANCE (1 << 22)
+#define CSKY_ISA_DSP        (((bfd_uint64_t)1) << 20)
+#define CSKY_ISA_DSP_1E2    (((bfd_uint64_t)1) << 21)
+#define CSKY_ISA_DSP_ENHANCE (((bfd_uint64_t)1) << 22)
+/* Vector DSP support.  */
+#define CSKY_ISA_VDSP       (((bfd_uint64_t)1) << 24)
+/* VDSP 2.0.  */
+#define CSKY_ISA_VDSP_2     (((bfd_uint64_t)1) << 25)
+/* VDSP for 803(vlde.t).  */
+#define CSKY_ISA_VDSP_2E3   (((bfd_uint64_t)1) << 26)
+#define CSKYV2_ISA_DSPE60   (((bfd_uint64_t)1) << 27)
+/* Floating Vector.  */
+#define CSKY_ISA_VDSP_2E60F (((bfd_uint64_t)1) << 28)
 
 /* Base float instruction(803f & 810f).  */
-#define CSKY_ISA_FLOAT_E1   (1 << 25)
+#define CSKY_ISA_FLOAT_E1   (((bfd_uint64_t)1) << 32)
 /* M_FLOAT support(810f).  */
-#define CSKY_ISA_FLOAT_1E2  (1 << 26)
+#define CSKY_ISA_FLOAT_1E2  (((bfd_uint64_t)1) << 33)
 /* 803 support(803f).  */
-#define CSKY_ISA_FLOAT_1E3  (1 << 27)
+#define CSKY_ISA_FLOAT_1E3  (((bfd_uint64_t)1) << 34)
 /* 807 support(803f & 807f).  */
-#define CSKY_ISA_FLOAT_3E4  (1 << 28)
-/* Vector DSP support.  */
-#define CSKY_ISA_VDSP       (1 << 29)
+#define CSKY_ISA_FLOAT_3E4  (((bfd_uint64_t)1) << 35)
+/* 860 support.  */
+#define CSKY_ISA_FLOAT_7E60 (((bfd_uint64_t)1) << 36)
 
 /* The following bitmask control cpu architecture for CSKY.  */
 #define CSKY_ABI_V1         (1 << 28)
 #define CSKY_ABI_V2         (2 << 28)
 #define CSKY_ARCH_MASK      0x0000001F
 #define CSKY_ABI_MASK       0xF0000000
+#define CSKY_VERSION_MASK   0x0F000000
 
 #define CSKY_ARCH_510       0x1
 #define CSKY_ARCH_610       0x2
 #define CSKY_ARCH_801       0xa
 #define CSKY_ARCH_802       0x10
 #define CSKY_ARCH_803       0x9
+/* NOTICE: 804 same as 803. */
+#define CSKY_ARCH_804       0x9
+#define CSKY_ARCH_805       0x11
 #define CSKY_ARCH_807       0x6
 #define CSKY_ARCH_810       0x8
 #define CSKY_ARCH_860       0xb
+/* NOTICE: 800 is a special arch for all instructions for ABIV2.  */
+#define CSKY_ARCH_800       0x1f
 
-#define CSKY_ARCH_MAC       (1 << 15)
+/* eflag's details.  */
+/* All Version.  */
 #define CSKY_ARCH_DSP       (1 << 14)
 #define CSKY_ARCH_FLOAT     (1 << 13)
+
+/* Version 1. */
+#define CSKY_ARCH_MAC       (1 << 15)
 #define CSKY_ARCH_SIMD      (1 << 12)
 #define CSKY_ARCH_CP        (1 << 11)
 #define CSKY_ARCH_MP        (1 << 10)
 #define CSKY_ARCH_CACHE     (1 << 9)
 #define CSKY_ARCH_JAVA      (1 << 8)
 #define CSKY_ARCH_APS       (1 << 7)
+
+/* eflag's Versions.  */
+#define CSKY_VERSION_V1     (1 << 24)
+#define CSKY_VERSION_V2     (2 << 24)
+#define CSKY_VERSION_V3     (3 << 24)
 
 #define IS_CSKY_V1(a)       ((a & CSKY_ABI_MASK) == CSKY_ABI_V1)
 #define IS_CSKY_V2(a)       ((a & CSKY_ABI_MASK) == CSKY_ABI_V2)

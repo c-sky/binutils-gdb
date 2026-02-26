@@ -4,8 +4,8 @@ LRW:
    lrw16    r2, 0x1000
    lrw32    r2, 0x10000
    lrw      r2, 0x12341234
-   lrw      r2, L1
-   lrw      r2, [L1]
+   lrw      r2, L1@GOTOFF
+   lrw      r2, [L1@GOTOFF]
 
 L1:
    mov      r2, r3

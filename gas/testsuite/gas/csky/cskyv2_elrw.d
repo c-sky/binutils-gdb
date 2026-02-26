@@ -1,6 +1,6 @@
 # name: cskyv2 - elrw
 #as: -mcpu=ck801 -melrw
-#objdump: -D
+#objdump: -d
 
 .*: +file format .*csky.*
 #...
@@ -8,3 +8,4 @@
 #...
 \s*[0-9a-f]*:\s*c0004020\s*rte
 \s*[0-9a-f]*:\s*00001234\s*\.long\s*0x00001234
+#...

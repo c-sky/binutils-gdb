@@ -1,0 +1,59 @@
+# Expect script for ld-cris tests
+#   Copyright (C) 2002-2018 Free Software Foundation, Inc.
+#
+# This file is part of the GNU Binutils.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
+# MA 02110-1301, USA.
+#
+# Written by Lifang Xia (lifang_xia@c-sky.com)
+#
+
+if ![istarget csky-*-*] {
+    return
+}
+
+exec cp $srcdir/$subdir/ld-bin.bin .
+if { ! [ld_assemble $as $srcdir/$subdir/ld-bin-1.s tmpdir/ld-bin-1.o]
+    || ! [ld_assemble $as $srcdir/$subdir/ld-bin-2.s tmpdir/ld-bin-2.o]
+    || ! [ld_simple_link $ld tmpdir/ld-bin.o "-r -bbinary ld-bin.bin"]} then {
+    return
+}
+
+proc ld_bin_test { testname } {
+    global srcdir
+    global subdir
+    global ld
+    global exec_output
+    global READELF
+    
+    if {! [ld_simple_link $ld tmpdir/ld-bin "-Ttext=0 -Tdata=0x100  tmpdir/ld-bin-1.o tmpdir/ld-bin-2.o tmpdir/ld-bin.o"] } then {
+	fail $testname
+	return 0
+    }
+
+    send_log "$READELF -s tmpdir/ld-bin\n"
+    set exec_output [run_host_cmd "$READELF" "-s tmpdir/ld-bin"]
+
+    if {! [regexp "_binary_ld_bin_bin_*" $exec_output] } {
+	  fail $testname
+	  return 0
+    }
+
+    pass $testname
+    return 1
+}
+
+ld_bin_test "csky-ld-bin"
